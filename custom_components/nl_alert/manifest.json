@@ -1,0 +1,24 @@
+{
+  "domain": "nl_alert",
+  "name": "NL-Alert",
+  "codeowners": [
+    "@joohann"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http",
+    "network",
+    "panel_custom",
+    "tts",
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/joohann/NL-Alert",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/joohann/NL-Alert/issues",
+  "loggers": [
+    "nl_alert"
+  ],
+  "requirements": [],
+  "version": "0.19.0"
+}

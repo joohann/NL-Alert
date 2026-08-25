@@ -1,0 +1,90 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "NL-Alert — locatie",
+        "description": "Houd NL-Alert berichten voor jouw locatie in de gaten.\n\nSpeakers, alarmgeluid, stem en notificaties stel je daarna in via het NL-Alert paneel in de zijbalk.",
+        "data": {
+          "use_home_location": "Gebruik Home Assistant thuislocatie",
+          "latitude": "Breedtegraad (alleen als je geen thuislocatie gebruikt)",
+          "longitude": "Lengtegraad (alleen als je geen thuislocatie gebruikt)",
+          "scan_interval_minutes": "Ophaalinterval"
+        }
+      }
+    },
+    "error": {
+      "missing_coordinates": "Breedte- en lengtegraad zijn verplicht als je geen thuislocatie gebruikt."
+    },
+    "abort": {
+      "already_configured": "NL-Alert is al geconfigureerd."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "NL-Alert",
+        "description": "Alle instellingen — speakers, alarmgeluid, stem, notificaties en de tests — staan in het NL-Alert paneel in de zijbalk (/nl-alert).",
+        "data": {
+          "show_in_sidebar": "NL-Alert in de zijbalk tonen"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "local_active": {
+        "name": "Alert in gebied"
+      }
+    },
+    "button": {
+      "test_alert": {
+        "name": "Test alert"
+      },
+      "test_alarm_sound": {
+        "name": "Test alarmgeluid"
+      },
+      "test_announcement": {
+        "name": "Test aankondiging"
+      },
+      "test_notify": {
+        "name": "Test notificatie"
+      }
+    },
+    "sensor": {
+      "active_count": {
+        "name": "Actieve alerts (NL)"
+      },
+      "local_count": {
+        "name": "Actieve alerts in gebied"
+      },
+      "latest_active": {
+        "name": "Laatste actieve alert (NL)"
+      },
+      "latest_local": {
+        "name": "Laatste alert in gebied"
+      }
+    }
+  },
+  "services": {
+    "test_alert": {
+      "name": "Test alert",
+      "description": "Stuur een synthetische NL-Alert door je ingestelde dispatch (alarm + TTS + push).",
+      "fields": {
+        "message": {
+          "name": "Bericht",
+          "description": "Optioneel eigen bericht. Standaard wordt een ingebouwd testbericht gebruikt."
+        },
+        "kind": {
+          "name": "Soort test",
+          "description": "Welk deel van de dispatch je wilt draaien: volledig, alarm, aankondiging of notificatie."
+        }
+      }
+    }
+  },
+  "issues": {
+    "holiday_integration_missing": {
+      "title": "NL-Alert heeft de Holiday-integratie nodig",
+      "description": "De maandelijkse test van het luchtalarm staat aan, maar Home Assistant heeft geen feestdagenkalender om tegen te controleren. De test wordt elke maand overgeslagen totdat je de **Holiday**-integratie toevoegt (Instellingen → Apparaten & diensten → Integratie toevoegen → Holiday, land: Nederland). Zonder die kalender kan NL-Alert niet zien of de eerste maandag een feestdag is — en dan is stil blijven beter dan een sirene op Koningsdag."
+    }
+  }
+}

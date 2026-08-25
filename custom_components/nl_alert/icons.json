@@ -1,0 +1,45 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "local_active": {
+        "default": "mdi:shield-check",
+        "state": {
+          "on": "mdi:shield-alert"
+        }
+      }
+    },
+    "button": {
+      "test_alert": {
+        "default": "mdi:bell-alert"
+      },
+      "test_alarm_sound": {
+        "default": "mdi:volume-high"
+      },
+      "test_announcement": {
+        "default": "mdi:bullhorn"
+      },
+      "test_notify": {
+        "default": "mdi:cellphone-message"
+      }
+    },
+    "sensor": {
+      "active_count": {
+        "default": "mdi:bell-alert-outline"
+      },
+      "local_count": {
+        "default": "mdi:bell-alert"
+      },
+      "latest_active": {
+        "default": "mdi:message-alert-outline"
+      },
+      "latest_local": {
+        "default": "mdi:message-alert"
+      }
+    }
+  },
+  "services": {
+    "test_alert": {
+      "service": "mdi:bell-alert"
+    }
+  }
+}

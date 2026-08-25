@@ -1,0 +1,37 @@
+test_alert:
+  name: Test alert
+  description: >
+    Trigger a synthetic NL-Alert that runs the configured dispatch (alarm
+    sound, TTS announcement, and push notification). Raises an error when a
+    step fails, so a broken speaker or a missing sound file is visible
+    instead of silent.
+  fields:
+    kind:
+      name: Test type
+      description: Which part of the dispatch to run.
+      required: false
+      default: full
+      selector:
+        select:
+          mode: dropdown
+          options:
+            - label: Full alert (alarm + speech + push)
+              value: full
+            - label: Alarm sound only
+              value: alarm
+            - label: Announcement (alarm + speech)
+              value: announcement
+            - label: Push notification only
+              value: notify
+            - label: Cast to the TV only
+              value: cast
+    message:
+      name: Message
+      description: >
+        Optional custom message. Defaults to a built-in Dutch/English test
+        message. The portion before "***" is sent to TTS and push.
+      required: false
+      example: "Dit is een test bericht."
+      selector:
+        text:
+          multiline: true

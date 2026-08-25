@@ -1,0 +1,15 @@
+name: Tests
+on:
+  push:
+  pull_request:
+jobs:
+  offline-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # No Home Assistant install needed: the checks stub the handful of
+      # homeassistant.* names the pure logic touches.
+      - run: python3 custom_components/nl_alert/tests/offline_checks.py

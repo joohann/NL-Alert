@@ -1,0 +1,90 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "NL-Alert — location",
+        "description": "Monitor NL-Alert public warnings for your location.\n\nSpeakers, alarm sound, voice and notifications are configured afterwards in the NL-Alert panel in the sidebar.",
+        "data": {
+          "use_home_location": "Use Home Assistant home location",
+          "latitude": "Latitude (only if not using home)",
+          "longitude": "Longitude (only if not using home)",
+          "scan_interval_minutes": "Polling interval"
+        }
+      }
+    },
+    "error": {
+      "missing_coordinates": "Latitude and longitude are required when not using the home location."
+    },
+    "abort": {
+      "already_configured": "NL-Alert is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "NL-Alert",
+        "description": "All settings — speakers, alarm sound, voice, notifications and the tests — live in the NL-Alert panel in the sidebar (/nl-alert).",
+        "data": {
+          "show_in_sidebar": "Show NL-Alert in the sidebar"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "local_active": {
+        "name": "Alert in area"
+      }
+    },
+    "button": {
+      "test_alert": {
+        "name": "Test alert"
+      },
+      "test_alarm_sound": {
+        "name": "Test alarm sound"
+      },
+      "test_announcement": {
+        "name": "Test announcement"
+      },
+      "test_notify": {
+        "name": "Test notification"
+      }
+    },
+    "sensor": {
+      "active_count": {
+        "name": "Active alerts (NL)"
+      },
+      "local_count": {
+        "name": "Active alerts in area"
+      },
+      "latest_active": {
+        "name": "Latest active alert (NL)"
+      },
+      "latest_local": {
+        "name": "Latest alert in area"
+      }
+    }
+  },
+  "services": {
+    "test_alert": {
+      "name": "Test alert",
+      "description": "Send a synthetic NL-Alert through your configured dispatch (alarm + TTS + push).",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "Optional custom message. A built-in test message is used by default."
+        },
+        "kind": {
+          "name": "Test type",
+          "description": "Which part of the dispatch to run: full, alarm, announcement or notify."
+        }
+      }
+    }
+  },
+  "issues": {
+    "holiday_integration_missing": {
+      "title": "NL-Alert needs the Holiday integration",
+      "description": "The monthly siren test is switched on, but Home Assistant has no holiday calendar to check against. The test is skipped every month until you add the **Holiday** integration (Settings → Devices & services → Add integration → Holiday, country: Netherlands). Without it, NL-Alert cannot tell whether the first Monday is a public holiday — and sounding a siren on a holiday is worse than staying silent."
+    }
+  }
+}
