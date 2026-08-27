@@ -2,6 +2,8 @@
 
 [![HACS Custom][hacs-badge]][hacs] [![Validate][validate-badge]][actions] [![Hassfest][hassfest-badge]][actions]
 
+[![Voeg toe aan HACS][my-badge]][my-hacs]
+
 Ontvang **NL-Alert** waarschuwingen in Home Assistant: alarm door het huis, een
 gesproken aankondiging, een kritieke notificatie op je telefoon en het
 gewaarschuwde gebied op de kaart.
@@ -41,8 +43,16 @@ gewaarschuwde gebied op de kaart.
 
 ### HACS
 
+[![Voeg toe aan HACS][my-badge]][my-hacs]
+
+Die knop opent HACS op je eigen Home Assistant met deze repository al
+ingevuld. Werkt de knop niet, voeg hem dan met de hand toe:
+
 1. HACS → ⋮ → **Custom repositories**
 2. URL: `https://github.com/joohann/NL-Alert`, categorie **Integration**
+
+Daarna in beide gevallen:
+
 3. Installeer **NL-Alert** en **herstart Home Assistant**
 4. Instellingen → Apparaten & diensten → **Integratie toevoegen** → NL-Alert
 
@@ -113,6 +123,8 @@ MIT — zie [LICENSE](LICENSE).
 
 [hacs]: https://github.com/hacs/integration
 [hacs-badge]: https://img.shields.io/badge/HACS-Custom-41BDF5.svg
+[my-badge]: https://my.home-assistant.io/badges/hacs_repository.svg
+[my-hacs]: https://my.home-assistant.io/redirect/hacs_repository/?owner=joohann&repository=NL-Alert&category=integration
 [actions]: https://github.com/joohann/NL-Alert/actions
 [validate-badge]: https://github.com/joohann/NL-Alert/actions/workflows/validate.yml/badge.svg
 [hassfest-badge]: https://github.com/joohann/NL-Alert/actions/workflows/hassfest.yml/badge.svg

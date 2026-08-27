@@ -101,6 +101,7 @@ const DARK_FILTER = `
       <feFuncB type="table" tableValues="1 0"/>
     </feComponentTransfer>
     <feColorMatrix type="hueRotate" values="180"/>
+    <feColorMatrix type="saturate" values="0.45"/>
     <feComponentTransfer>
       <feFuncR type="linear" slope="0.86"/>
       <feFuncG type="linear" slope="0.86"/>
