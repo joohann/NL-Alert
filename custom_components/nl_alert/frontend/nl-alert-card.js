@@ -26,7 +26,7 @@
 
 const TILE_SIZE = 256;
 const ZOOM_MIN = 6;
-const ZOOM_MAX = 13;
+const ZOOM_MAX = 18;
 const MAX_MAP_PX = 700;
 const REFRESH_MS = 30000;
 
@@ -93,6 +93,23 @@ const DEFAULT_TILE_URL =
   "World_Street_Map/MapServer/tile/{z}/{y}/{x}";
 const DEFAULT_ATTRIBUTION = "© Esri, HERE, Garmin, OpenStreetMap contributors";
 
+// SVG filter, not the CSS property: CSS filters on inline-SVG children are
+// unreliable outside Chromium.
+const DARK_FILTER = `
+  <filter id="nl-dark-card" color-interpolation-filters="sRGB">
+    <feComponentTransfer>
+      <feFuncR type="table" tableValues="1 0"/>
+      <feFuncG type="table" tableValues="1 0"/>
+      <feFuncB type="table" tableValues="1 0"/>
+    </feComponentTransfer>
+    <feColorMatrix type="hueRotate" values="180"/>
+    <feComponentTransfer>
+      <feFuncR type="linear" slope="0.86"/>
+      <feFuncG type="linear" slope="0.86"/>
+      <feFuncB type="linear" slope="0.86"/>
+    </feComponentTransfer>
+  </filter>`;
+
 /** Fill {z}/{x}/{y} (and {s}) in a tile template. */
 function tileUrl(template, zoom, x, y) {
   return (template || DEFAULT_TILE_URL)
@@ -149,7 +166,6 @@ const STYLE = `
   .more div { padding: .25em 0; }
   .map { margin-top: .9em; height: 40vh; min-height: 180px; position: relative; }
   .map svg { width: 100%; height: 100%; display: block; border-radius: 8px; }
-  .tiles.dark { filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(1.08); }
   .attribution {
     position: absolute; right: 5px; bottom: 3px; font-size: 10px;
     color: var(--secondary-text-color, #666);
@@ -349,6 +365,8 @@ class NlAlertCard extends HTMLElement {
     const [x2, y2] = project(bounds.min_lat, bounds.max_lon, zoom);
     const width = Math.max(x2 - x1, 1);
     const height = Math.max(y2 - y1, 1);
+    // Drawn relative to (x1, y1): world pixel coordinates at deep zoom exceed
+    // the precision SVG rasterises with, and the map stops rendering.
 
     const dark = this._hass && this._hass.themes && this._hass.themes.darkMode;
     // Contrast against the basemap, not the card: a black outline disappears
@@ -361,7 +379,7 @@ class NlAlertCard extends HTMLElement {
         if (tx < 0 || ty < 0 || tx >= max || ty >= max) continue;
         tiles.push(
           `<image href="${tileUrl(this._tileTemplate, zoom, tx, ty)}"
-             x="${tx * TILE_SIZE}" y="${ty * TILE_SIZE}"
+             x="${tx * TILE_SIZE - x1}" y="${ty * TILE_SIZE - y1}"
              width="${TILE_SIZE}" height="${TILE_SIZE}" class="tile" />`
         );
       }
@@ -370,7 +388,10 @@ class NlAlertCard extends HTMLElement {
     const shapes = (alert.polygons || [])
       .map((poly) => {
         const points = poly
-          .map(([lat, lon]) => project(lat, lon, zoom).join(","))
+          .map(([lat, lon]) => {
+            const [px, py] = project(lat, lon, zoom);
+            return `${px - x1},${py - y1}`;
+          })
           .join(" ");
         return `<polygon points="${points}" fill="${BRAND_YELLOW}"
           fill-opacity="0.5" stroke="${ink}" stroke-width="3"
@@ -381,16 +402,19 @@ class NlAlertCard extends HTMLElement {
     const monitored = (this._data && this._data.monitored) || {};
     let marker = "";
     if (monitored.latitude != null && monitored.longitude != null) {
-      const [mx, my] = project(monitored.latitude, monitored.longitude, zoom);
+      const [mx0, my0] = project(monitored.latitude, monitored.longitude, zoom);
+      const mx = mx0 - x1;
+      const my = my0 - y1;
       marker = `<circle cx="${mx}" cy="${my}" r="4" fill="#1e88e5"
         stroke="#fff" stroke-width="1.5" vector-effect="non-scaling-stroke" />`;
     }
 
     el.innerHTML = `
-      <svg viewBox="${x1} ${y1} ${width} ${height}"
+      <svg viewBox="0 0 ${width} ${height}"
            preserveAspectRatio="xMidYMid meet" role="img"
            aria-label="Gebied van deze NL-Alert">
-        <g class="tiles${dark ? " dark" : ""}">${tiles.join("")}</g><g>${shapes}</g><g>${marker}</g>
+        ${dark ? DARK_FILTER : ""}
+        <g${dark ? ' filter="url(#nl-dark-card)"' : ""}>${tiles.join("")}</g><g>${shapes}</g><g>${marker}</g>
       </svg>`;
 
     el.querySelectorAll("image.tile").forEach((tile) =>

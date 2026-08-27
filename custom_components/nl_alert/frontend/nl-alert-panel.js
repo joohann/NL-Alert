@@ -33,14 +33,16 @@ const REFRESH_MS = 30000;
 // whole country lands on z8; a single municipality-sized alert area on ~z12,
 // which keeps the tiles sharp when you click an alert to zoom in.
 const ZOOM_MIN = 6;
-const ZOOM_MAX = 13;
+// Esri serves down to street level; stopping at 13 meant the deepest view
+// was still a whole neighbourhood.
+const ZOOM_MAX = 18;
 // Only a fallback for the first paint, before the map element has a size.
 const MAX_MAP_PX = 700;
 // Manual zoom steps around whatever the map is currently framing. Each step
 // halves or doubles the visible span.
 // Limits on how far the view may be zoomed, in degrees of latitude:
 // roughly 1 km at the tight end, twice the country at the wide end.
-const MIN_SPAN_LAT = 0.01;
+const MIN_SPAN_LAT = 0.0012;
 const MAX_SPAN_LAT = 6;
 
 // NL-Alert's house style is yellow on black (nl-alert.nl). Yellow alone has
@@ -178,6 +180,25 @@ const DEFAULT_TILE_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/" +
   "World_Street_Map/MapServer/tile/{z}/{y}/{x}";
 const DEFAULT_ATTRIBUTION = "© Esri, HERE, Garmin, OpenStreetMap contributors";
+
+// Written as an SVG filter rather than the CSS `filter` property: CSS filter
+// functions on an inline-SVG child are unreliable outside Chromium, which is
+// why the map stayed light in dark mode on Safari. feComponentTransfer and
+// feColorMatrix are plain SVG and behave the same everywhere.
+const DARK_FILTER = `
+  <filter id="nl-dark" color-interpolation-filters="sRGB">
+    <feComponentTransfer>
+      <feFuncR type="table" tableValues="1 0"/>
+      <feFuncG type="table" tableValues="1 0"/>
+      <feFuncB type="table" tableValues="1 0"/>
+    </feComponentTransfer>
+    <feColorMatrix type="hueRotate" values="180"/>
+    <feComponentTransfer>
+      <feFuncR type="linear" slope="0.86"/>
+      <feFuncG type="linear" slope="0.86"/>
+      <feFuncB type="linear" slope="0.86"/>
+    </feComponentTransfer>
+  </filter>`;
 
 /** Fill {z}/{x}/{y} (and {s}) in a tile template. */
 function tileUrl(template, zoom, x, y) {
@@ -491,7 +512,6 @@ const STYLE = `
   /* The basemap has no dark edition, so it is inverted — the same trick HA
      uses for its own raster fallback. Rotating the hue back keeps water blue
      instead of orange. */
-  .tiles.dark { filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(1.08); }
   .map-zoom {
     position: absolute; right: 8px; top: 8px;
     display: flex; flex-direction: column; gap: 4px;
@@ -1302,6 +1322,11 @@ class NlAlertPanel extends HTMLElement {
     const [x2, y2] = project(bounds.min_lat, bounds.max_lon, zoom);
     const width = Math.max(x2 - x1, 1);
     const height = Math.max(y2 - y1, 1);
+    // Everything below is drawn relative to (x1, y1) and the viewBox starts
+    // at 0. World pixel coordinates run to 34 million at zoom 18, past the
+    // float precision SVG rasterises with — the map simply stopped drawing.
+    // The pan maths keeps using world coordinates; only the geometry that
+    // reaches the DOM is shifted.
 
     const dark = this._hass && this._hass.themes && this._hass.themes.darkMode;
     // Ink has to contrast with the BASEMAP, not with the page: black lines
@@ -1322,7 +1347,7 @@ class NlAlertPanel extends HTMLElement {
         if (tx < 0 || ty < 0 || tx >= max || ty >= max) continue;
         const url = tileUrl(this._tileTemplate, zoom, tx, ty);
         tiles.push(
-          `<image href="${url}" x="${tx * TILE_SIZE}" y="${ty * TILE_SIZE}"
+          `<image href="${url}" x="${tx * TILE_SIZE - x1}" y="${ty * TILE_SIZE - y1}"
              width="${TILE_SIZE}" height="${TILE_SIZE}" class="tile" />`
         );
       }
@@ -1339,7 +1364,10 @@ class NlAlertPanel extends HTMLElement {
         return (alert.polygons || [])
           .map((poly) => {
             const points = poly
-              .map(([lat, lon]) => project(lat, lon, zoom).join(","))
+              .map(([lat, lon]) => {
+                const [px, py] = project(lat, lon, zoom);
+                return `${px - x1},${py - y1}`;
+              })
               .join(" ");
             return `<polygon points="${points}" fill="${color}"
               fill-opacity="${dim ? 0.14 : 0.5}" stroke="${stroke}"
@@ -1353,7 +1381,9 @@ class NlAlertPanel extends HTMLElement {
     const monitored = this._alerts.monitored || {};
     let marker = "";
     if (monitored.latitude != null && monitored.longitude != null) {
-      const [mx, my] = project(monitored.latitude, monitored.longitude, zoom);
+      const [mx0, my0] = project(monitored.latitude, monitored.longitude, zoom);
+      const mx = mx0 - x1;
+      const my = my0 - y1;
       marker = `
         <circle cx="${mx}" cy="${my}" r="9" fill="var(--primary-color, #03a9f4)"
           fill-opacity="0.25" />
@@ -1365,11 +1395,13 @@ class NlAlertPanel extends HTMLElement {
     // a gap in the middle, so the exact point stays readable underneath.
     let reticle = "";
     if (this._focus && this._focus.centroid) {
-      const [cx, cy] = project(
+      const [cx0, cy0] = project(
         this._focus.centroid[0],
         this._focus.centroid[1],
         zoom
       );
+      const cx = cx0 - x1;
+      const cy = cy0 - y1;
       // Anchored to the ground, not to the frame: the ring encloses the
       // warned area, so zooming in grows it and zooming out shrinks it, the
       // way everything else on the map behaves. A floor keeps it visible
@@ -1381,7 +1413,11 @@ class NlAlertPanel extends HTMLElement {
         const [bx, by] = project(area.min_lat, area.max_lon, zoom);
         r = (Math.hypot(bx - ax, by - ay) / 2) * 1.25;
       }
-      r = Math.max(r, Math.min(width, height) * 0.05);
+      // Floor so a few streets stay visible at national zoom; ceiling so
+      // zooming to street level does not leave only the middle of the ring
+      // on screen.
+      const frame = Math.min(width, height);
+      r = Math.max(frame * 0.05, Math.min(r, frame * 0.42));
       const tick = r * 0.55;
 
       // Every stroke is drawn twice: a dark halo first, the light yellow on
@@ -1426,10 +1462,11 @@ class NlAlertPanel extends HTMLElement {
     }
 
     el.innerHTML = `
-      <svg viewBox="${x1} ${y1} ${width} ${height}"
+      <svg viewBox="0 0 ${width} ${height}"
            preserveAspectRatio="xMidYMid meet" role="img"
            aria-label="Kaart met actieve NL-Alerts">
-        <g class="tiles${dark ? " dark" : ""}">${tiles.join("")}</g>
+        ${dark ? DARK_FILTER : ""}
+        <g${dark ? ' filter="url(#nl-dark)"' : ""}>${tiles.join("")}</g>
         <g>${shapes}</g>
         <g>${marker}</g>
         ${reticle}
