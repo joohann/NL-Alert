@@ -19,7 +19,7 @@ storing, een internetprobleem of een speaker die niet reageert.
 | Wat | Waar vandaan |
 |---|---|
 | Alertberichten | [api.public-warning.app](https://api.public-warning.app) — publieke API, niet van de overheid zelf |
-| Kaartmateriaal | [OpenStreetMap](https://www.openstreetmap.org/copyright) · CARTO |
+| Kaartmateriaal | Esri World Street Map (instelbaar) — © Esri, HERE, Garmin, [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors |
 | Feestdagen | [Holiday-integratie](https://www.home-assistant.io/integrations/holiday/) van Home Assistant |
 
 ## Na het installeren

@@ -34,7 +34,8 @@ gewaarschuwde gebied op de kaart.
 - **Maandelijkse test** — eerste maandag van de maand om 12:00:00, overgeslagen
   op feestdagen.
 - **Paneel met kaart** — landelijk overzicht, geschiedenis met locatie, slepen,
-  zoomen en dubbelklikken.
+  zoomen en dubbelklikken. De kaartlaag is instelbaar: standaard Esri World
+  Street Map (geen sleutel nodig), of je eigen tegel-URL.
 
 ## Installatie
 
@@ -89,6 +90,9 @@ Er is ook een service `nl_alert.test_alert` en een Lovelace-kaart
 - **Kritieke notificaties zijn een verzoek, geen garantie.** Op iOS werkt het
   alleen met Apple's critical-alert-recht; op Android hangt het van het toestel
   af.
+- **Kaartlagen veranderen.** CARTO zet sinds augustus 2026 "API KEY REQUIRED"
+  in elke tegel en OpenStreetMap weigert verzoeken van apps. Vandaar Esri als
+  standaard, met een veld voor je eigen aanbieder mocht die ook dichtgaan.
 - **Exacte timing.** De maandelijkse test vuurt op de seconde, maar tussen het
   commando en geluid uit een cloud-gekoppelde speaker zit latentie.
 

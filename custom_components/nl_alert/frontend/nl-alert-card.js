@@ -84,6 +84,24 @@ function boundsOfPolygons(polygons) {
   };
 }
 
+// CARTO watermarks every tile with "API KEY REQUIRED" since August 2026, and
+// OpenStreetMap's own raster servers refuse third-party apps outright. Esri's
+// World Street Map still serves labelled tiles without a key, and the URL is a
+// setting so anyone can point at a provider they hold a key for.
+const DEFAULT_TILE_URL =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/" +
+  "World_Street_Map/MapServer/tile/{z}/{y}/{x}";
+const DEFAULT_ATTRIBUTION = "© Esri, HERE, Garmin, OpenStreetMap contributors";
+
+/** Fill {z}/{x}/{y} (and {s}) in a tile template. */
+function tileUrl(template, zoom, x, y) {
+  return (template || DEFAULT_TILE_URL)
+    .replace(/{z}/g, zoom)
+    .replace(/{x}/g, x)
+    .replace(/{y}/g, y)
+    .replace(/{s}/g, "a");
+}
+
 function escapeHtml(value) {
   return String(value == null ? "" : value).replace(
     /[&<>"']/g,
@@ -131,6 +149,7 @@ const STYLE = `
   .more div { padding: .25em 0; }
   .map { margin-top: .9em; height: 40vh; min-height: 180px; position: relative; }
   .map svg { width: 100%; height: 100%; display: block; border-radius: 8px; }
+  .tiles.dark { filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(1.08); }
   .attribution {
     position: absolute; right: 5px; bottom: 3px; font-size: 10px;
     color: var(--secondary-text-color, #666);
@@ -298,7 +317,9 @@ class NlAlertCard extends HTMLElement {
           ${
             this._config.show_map && !this._config.compact
               ? `<div class="map"><div id="map"></div>
-                   <div class="attribution">© OpenStreetMap · CARTO</div></div>`
+                   <div class="attribution">${escapeHtml(
+                     (this._data && this._data.attribution) || DEFAULT_ATTRIBUTION
+                   )}</div></div>`
               : ""
           }
         </div>
@@ -313,6 +334,8 @@ class NlAlertCard extends HTMLElement {
     const el = this.shadowRoot.getElementById("map");
     if (!el) return;
 
+    this._tileTemplate =
+      (this._data && this._data.tile_url) || DEFAULT_TILE_URL;
     const bounds =
       (alert.polygons && alert.polygons.length
         ? boundsOfPolygons(alert.polygons)
@@ -328,7 +351,6 @@ class NlAlertCard extends HTMLElement {
     const height = Math.max(y2 - y1, 1);
 
     const dark = this._hass && this._hass.themes && this._hass.themes.darkMode;
-    const style = dark ? "dark_all" : "light_all";
     // Contrast against the basemap, not the card: a black outline disappears
     // on the dark tiles.
     const ink = dark ? "#ffffff" : BRAND_BLACK;
@@ -338,7 +360,7 @@ class NlAlertCard extends HTMLElement {
       for (let ty = Math.floor(y1 / TILE_SIZE); ty <= Math.floor(y2 / TILE_SIZE); ty++) {
         if (tx < 0 || ty < 0 || tx >= max || ty >= max) continue;
         tiles.push(
-          `<image href="https://a.basemaps.cartocdn.com/${style}/${zoom}/${tx}/${ty}@2x.png"
+          `<image href="${tileUrl(this._tileTemplate, zoom, tx, ty)}"
              x="${tx * TILE_SIZE}" y="${ty * TILE_SIZE}"
              width="${TILE_SIZE}" height="${TILE_SIZE}" class="tile" />`
         );
@@ -368,7 +390,7 @@ class NlAlertCard extends HTMLElement {
       <svg viewBox="${x1} ${y1} ${width} ${height}"
            preserveAspectRatio="xMidYMid meet" role="img"
            aria-label="Gebied van deze NL-Alert">
-        <g>${tiles.join("")}</g><g>${shapes}</g><g>${marker}</g>
+        <g class="tiles${dark ? " dark" : ""}">${tiles.join("")}</g><g>${shapes}</g><g>${marker}</g>
       </svg>`;
 
     el.querySelectorAll("image.tile").forEach((tile) =>

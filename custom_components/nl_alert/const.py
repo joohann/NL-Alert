@@ -160,6 +160,20 @@ SIREN_TEST_MESSAGE = "Maandelijkse test van het luchtalarm (eerste maandag, 12:0
 # Repair issue raised when the siren test is on but HA has no holiday source.
 ISSUE_HOLIDAY_MISSING = "holiday_integration_missing"
 
+# Map tiles. CARTO started watermarking every basemap tile with "API KEY
+# REQUIRED" (August 2026) and OpenStreetMap's own raster servers actively
+# block third-party apps per their tile usage policy — verified: both return
+# HTTP 200 with a refusal baked into the image. Esri's World Street Map
+# serves labelled tiles without a key, so that is the default; anyone who
+# has a key for another provider can paste its template here instead.
+CONF_MAP_TILE_URL = "map_tile_url"
+CONF_MAP_ATTRIBUTION = "map_attribution"
+DEFAULT_MAP_TILE_URL = (
+    "https://server.arcgisonline.com/ArcGIS/rest/services/"
+    "World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+)
+DEFAULT_MAP_ATTRIBUTION = "© Esri, HERE, Garmin, OpenStreetMap contributors"
+
 # Panel
 CONF_SHOW_IN_SIDEBAR = "show_in_sidebar"      # bool, default True
 # One-shot welcome screen. Stored on the config entry rather than in the

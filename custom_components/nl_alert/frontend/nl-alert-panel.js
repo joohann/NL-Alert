@@ -170,6 +170,24 @@ function boundsOfPolygons(polygons) {
   };
 }
 
+// CARTO watermarks every tile with "API KEY REQUIRED" since August 2026, and
+// OpenStreetMap's own raster servers refuse third-party apps outright. Esri's
+// World Street Map still serves labelled tiles without a key, and the URL is a
+// setting so anyone can point at a provider they hold a key for.
+const DEFAULT_TILE_URL =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/" +
+  "World_Street_Map/MapServer/tile/{z}/{y}/{x}";
+const DEFAULT_ATTRIBUTION = "© Esri, HERE, Garmin, OpenStreetMap contributors";
+
+/** Fill {z}/{x}/{y} (and {s}) in a tile template. */
+function tileUrl(template, zoom, x, y) {
+  return (template || DEFAULT_TILE_URL)
+    .replace(/{z}/g, zoom)
+    .replace(/{x}/g, x)
+    .replace(/{y}/g, y)
+    .replace(/{s}/g, "a");
+}
+
 function escapeHtml(value) {
   return String(value == null ? "" : value).replace(
     /[&<>"']/g,
@@ -470,6 +488,10 @@ const STYLE = `
   /* The tiles must not swallow the drag: pointer events belong to the SVG,
      and the browser must not offer the images as draggable content. */
   .map-wrap svg image { pointer-events: none; -webkit-user-drag: none; }
+  /* The basemap has no dark edition, so it is inverted — the same trick HA
+     uses for its own raster fallback. Rotating the hue back keeps water blue
+     instead of orange. */
+  .tiles.dark { filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(1.08); }
   .map-zoom {
     position: absolute; right: 8px; top: 8px;
     display: flex; flex-direction: column; gap: 4px;
@@ -664,6 +686,8 @@ class NlAlertPanel extends HTMLElement {
     this._logoLight = "";
     this._logoDark = "";
     this._version = "";
+    this._tileTemplate = DEFAULT_TILE_URL;
+    this._attribution = DEFAULT_ATTRIBUTION;
     this._history = [];
   }
 
@@ -727,6 +751,13 @@ class NlAlertPanel extends HTMLElement {
       this._bounds = config.bounds || this._bounds;
       this._pollingChoices = config.polling_choices || [];
       this._holidayEntity = config.holiday_entity || "";
+      const mapDefaults = config.map_defaults || {};
+      this._tileTemplate =
+        this._options.map_tile_url || mapDefaults.tile_url || DEFAULT_TILE_URL;
+      this._attribution =
+        this._options.map_attribution ||
+        mapDefaults.attribution ||
+        DEFAULT_ATTRIBUTION;
       this._nextSirenTest = config.next_siren_test || "";
     } catch (err) {
       this._fatal(err);
@@ -824,7 +855,7 @@ class NlAlertPanel extends HTMLElement {
               <button id="zoom-in" title="Inzoomen" aria-label="Inzoomen">+</button>
               <button id="zoom-out" title="Uitzoomen" aria-label="Uitzoomen">−</button>
             </div>
-            <div class="attribution">© OpenStreetMap · CARTO</div>
+            <div class="attribution" id="attribution"></div>
           </div>
           <div class="alert-list" id="alert-list"></div>
         </div>
@@ -1273,7 +1304,6 @@ class NlAlertPanel extends HTMLElement {
     const height = Math.max(y2 - y1, 1);
 
     const dark = this._hass && this._hass.themes && this._hass.themes.darkMode;
-    const style = dark ? "dark_all" : "light_all";
     // Ink has to contrast with the BASEMAP, not with the page: black lines
     // are invisible on the dark tiles, which is how the reticle vanished the
     // moment the map became readable enough to notice.
@@ -1290,7 +1320,7 @@ class NlAlertPanel extends HTMLElement {
     for (let tx = tx0 - 1; tx <= tx1 + 1; tx++) {
       for (let ty = ty0 - 1; ty <= ty1 + 1; ty++) {
         if (tx < 0 || ty < 0 || tx >= max || ty >= max) continue;
-        const url = `https://a.basemaps.cartocdn.com/${style}/${zoom}/${tx}/${ty}@2x.png`;
+        const url = tileUrl(this._tileTemplate, zoom, tx, ty);
         tiles.push(
           `<image href="${url}" x="${tx * TILE_SIZE}" y="${ty * TILE_SIZE}"
              width="${TILE_SIZE}" height="${TILE_SIZE}" class="tile" />`
@@ -1399,7 +1429,7 @@ class NlAlertPanel extends HTMLElement {
       <svg viewBox="${x1} ${y1} ${width} ${height}"
            preserveAspectRatio="xMidYMid meet" role="img"
            aria-label="Kaart met actieve NL-Alerts">
-        <g>${tiles.join("")}</g>
+        <g class="tiles${dark ? " dark" : ""}">${tiles.join("")}</g>
         <g>${shapes}</g>
         <g>${marker}</g>
         ${reticle}
@@ -1444,6 +1474,9 @@ class NlAlertPanel extends HTMLElement {
       zoomIn.onclick = () => this._zoomBy(1);
       zoomOut.onclick = () => this._zoomBy(-1);
     }
+
+    const credit = this.shadowRoot.getElementById("attribution");
+    if (credit) credit.textContent = this._attribution || DEFAULT_ATTRIBUTION;
 
     this._renderFocusBar();
     this._renderAlertList();
@@ -2166,6 +2199,33 @@ class NlAlertPanel extends HTMLElement {
       </details>
 
       <details class="card">
+        <summary>Kaart</summary>
+        <div class="row">
+          <label class="title" for="tile_url">Kaartlaag (tegel-URL)</label>
+          <div class="control">
+            <input type="text" id="tile_url" spellcheck="false"
+              placeholder="${escapeHtml(DEFAULT_TILE_URL)}"
+              value="${escapeHtml(o.map_tile_url || "")}">
+          </div>
+          <div class="hint muted">Leeg = de standaardkaart. Gebruik
+            <code>{z}</code>, <code>{x}</code> en <code>{y}</code> als
+            plaatshouders. CARTO en OpenStreetMap weigeren inmiddels verzoeken
+            zonder sleutel of van apps; heb je een sleutel bij een aanbieder,
+            plak dan hier hun template.</div>
+        </div>
+        <div class="row">
+          <label class="title" for="tile_attribution">Bronvermelding</label>
+          <div class="control">
+            <input type="text" id="tile_attribution"
+              placeholder="${escapeHtml(DEFAULT_ATTRIBUTION)}"
+              value="${escapeHtml(o.map_attribution || "")}">
+          </div>
+          <div class="hint muted">Verschijnt rechtsonder op de kaart. Vrijwel
+            elke aanbieder verplicht dit.</div>
+        </div>
+      </details>
+
+      <details class="card">
         <summary>Over NL-Alert</summary>
         ${WELCOME.warnings
           .map(
@@ -2374,6 +2434,16 @@ class NlAlertPanel extends HTMLElement {
     });
     on("cast_at_night", "change", (ev) => {
       this._options.cast_at_night = ev.target.checked;
+    });
+    on("tile_url", "change", (ev) => {
+      this._options.map_tile_url = ev.target.value.trim();
+      this._tileTemplate = this._options.map_tile_url || DEFAULT_TILE_URL;
+      this._renderMap();
+    });
+    on("tile_attribution", "change", (ev) => {
+      this._options.map_attribution = ev.target.value.trim();
+      this._attribution = this._options.map_attribution || DEFAULT_ATTRIBUTION;
+      this._renderMap();
     });
     on("show-welcome", "click", () => this._renderWelcome());
     on("show_in_sidebar", "change", (ev) => {
@@ -2637,6 +2707,8 @@ class NlAlertPanel extends HTMLElement {
       cast_turn_on: o.cast_turn_on !== false,
       cast_power_entities: o.cast_power_entities || [],
       show_in_sidebar: o.show_in_sidebar !== false,
+      map_tile_url: o.map_tile_url || "",
+      map_attribution: o.map_attribution || "",
     };
   }
 

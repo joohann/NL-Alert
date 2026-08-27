@@ -37,8 +37,12 @@ from .audio_scan import async_scan_audio_files, async_scan_builtin_sounds
 from .const import (
     CONF_LATITUDE,
     CONF_LONGITUDE,
+    CONF_MAP_ATTRIBUTION,
+    CONF_MAP_TILE_URL,
     CONF_USE_HOME_LOCATION,
     DOMAIN,
+    DEFAULT_MAP_ATTRIBUTION,
+    DEFAULT_MAP_TILE_URL,
     MEDIA_PLAYER_FEATURE_TURN_ON,
     NL_BOUNDS,
     POLLING_CHOICES,
@@ -97,6 +101,8 @@ _WRITABLE_KEYS = {
     "show_in_sidebar",
     "map_show_national",
     "welcome_seen",
+    "map_tile_url",
+    "map_attribution",
 }
 
 
@@ -174,6 +180,10 @@ async def ws_get_config(hass: HomeAssistant, connection, msg) -> None:
             # Sent rather than duplicated in the frontend, so the dropdown
             # can never drift from what the coordinator actually accepts.
             "polling_choices": POLLING_CHOICES,
+            "map_defaults": {
+                "tile_url": DEFAULT_MAP_TILE_URL,
+                "attribution": DEFAULT_MAP_ATTRIBUTION,
+            },
             # Whether HA can tell us about holidays at all — the panel needs
             # this to explain why the siren test would be skipped.
             "holiday_entity": async_holiday_entity(hass, options),
@@ -426,6 +436,7 @@ def ws_get_alerts(hass: HomeAssistant, connection, msg) -> None:
         connection.send_error(msg["id"], "not_found", "NL-Alert is niet geladen")
         return
 
+    options = _merged(entry)
     data = coordinator.data or {}
     active = [_serialize_alert(a) for a in data.get("active") or []]
     fetched = data.get("fetched_at")
@@ -441,6 +452,11 @@ def ws_get_alerts(hass: HomeAssistant, connection, msg) -> None:
                 "longitude": coordinator.longitude,
             },
             "bounds": NL_BOUNDS,
+            # The Lovelace card has no settings of its own; it draws the same
+            # basemap the panel does, so the choice travels with the data.
+            "tile_url": options.get(CONF_MAP_TILE_URL) or DEFAULT_MAP_TILE_URL,
+            "attribution": options.get(CONF_MAP_ATTRIBUTION)
+            or DEFAULT_MAP_ATTRIBUTION,
         },
     )
 
