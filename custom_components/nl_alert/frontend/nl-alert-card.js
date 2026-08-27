@@ -88,10 +88,8 @@ function boundsOfPolygons(polygons) {
 // OpenStreetMap's own raster servers refuse third-party apps outright. Esri's
 // World Street Map still serves labelled tiles without a key, and the URL is a
 // setting so anyone can point at a provider they hold a key for.
-const DEFAULT_TILE_URL =
-  "https://server.arcgisonline.com/ArcGIS/rest/services/" +
-  "World_Street_Map/MapServer/tile/{z}/{y}/{x}";
-const DEFAULT_ATTRIBUTION = "© Esri, HERE, Garmin, OpenStreetMap contributors";
+const DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const DEFAULT_ATTRIBUTION = "© OpenStreetMap contributors";
 
 // SVG filter, not the CSS property: CSS filters on inline-SVG children are
 // unreliable outside Chromium.

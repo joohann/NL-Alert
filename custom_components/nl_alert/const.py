@@ -161,18 +161,21 @@ SIREN_TEST_MESSAGE = "Maandelijkse test van het luchtalarm (eerste maandag, 12:0
 ISSUE_HOLIDAY_MISSING = "holiday_integration_missing"
 
 # Map tiles. CARTO started watermarking every basemap tile with "API KEY
-# REQUIRED" (August 2026) and OpenStreetMap's own raster servers actively
-# block third-party apps per their tile usage policy — verified: both return
-# HTTP 200 with a refusal baked into the image. Esri's World Street Map
-# serves labelled tiles without a key, so that is the default; anyone who
-# has a key for another provider can paste its template here instead.
+# REQUIRED" (August 2026), so it needs a key to be usable at all.
+#
+# OpenStreetMap's own servers are a valid alternative: their tile usage policy
+# permits "normal interactive viewing by a human where the client requests
+# only the tiles needed for the current viewport", which is exactly what the
+# panel does. It does require a Referer header — a request without one gets a
+# "blocked" tile back, which is easy to mistake for a blanket ban on apps.
+# OSM is the default because it simply looks better. Their servers are
+# community-funded, so the panel stays inside what the policy allows: the
+# tiles for the view you are looking at, nothing loaded ahead or stored.
+# Esri is one click away for anyone who would rather not lean on them.
 CONF_MAP_TILE_URL = "map_tile_url"
 CONF_MAP_ATTRIBUTION = "map_attribution"
-DEFAULT_MAP_TILE_URL = (
-    "https://server.arcgisonline.com/ArcGIS/rest/services/"
-    "World_Street_Map/MapServer/tile/{z}/{y}/{x}"
-)
-DEFAULT_MAP_ATTRIBUTION = "© Esri, HERE, Garmin, OpenStreetMap contributors"
+DEFAULT_MAP_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+DEFAULT_MAP_ATTRIBUTION = "© OpenStreetMap contributors"
 
 # Panel
 CONF_SHOW_IN_SIDEBAR = "show_in_sidebar"      # bool, default True

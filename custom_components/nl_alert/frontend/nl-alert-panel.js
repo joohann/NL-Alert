@@ -176,10 +176,29 @@ function boundsOfPolygons(polygons) {
 // OpenStreetMap's own raster servers refuse third-party apps outright. Esri's
 // World Street Map still serves labelled tiles without a key, and the URL is a
 // setting so anyone can point at a provider they hold a key for.
-const DEFAULT_TILE_URL =
-  "https://server.arcgisonline.com/ArcGIS/rest/services/" +
-  "World_Street_Map/MapServer/tile/{z}/{y}/{x}";
-const DEFAULT_ATTRIBUTION = "© Esri, HERE, Garmin, OpenStreetMap contributors";
+const DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const DEFAULT_ATTRIBUTION = "© OpenStreetMap contributors";
+
+// One-click choices. OSM's tile policy allows exactly what this panel does —
+// the tiles for the current viewport, requested by a person looking at them —
+// but it is not the default: a HACS integration should not put its users'
+// traffic on community-funded servers by choice.
+const TILE_PRESETS = [
+  {
+    id: "osm",
+    label: "OpenStreetMap (standaard)",
+    url: DEFAULT_TILE_URL,
+    attribution: DEFAULT_ATTRIBUTION,
+  },
+  {
+    id: "esri",
+    label: "Esri World Street Map",
+    url:
+      "https://server.arcgisonline.com/ArcGIS/rest/services/" +
+      "World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+    attribution: "© Esri, HERE, Garmin, OpenStreetMap contributors",
+  },
+];
 
 // Written as an SVG filter rather than the CSS `filter` property: CSS filter
 // functions on an inline-SVG child are unreliable outside Chromium, which is
@@ -2238,7 +2257,33 @@ class NlAlertPanel extends HTMLElement {
       <details class="card">
         <summary>Kaart</summary>
         <div class="row">
-          <label class="title" for="tile_url">Kaartlaag (tegel-URL)</label>
+          <label class="title" for="tile_preset">Kaartlaag</label>
+          <div class="control">
+            <select id="tile_preset">
+              ${TILE_PRESETS.map(
+                (preset) =>
+                  `<option value="${preset.id}" ${
+                    (o.map_tile_url || DEFAULT_TILE_URL) === preset.url
+                      ? "selected"
+                      : ""
+                  }>${escapeHtml(preset.label)}</option>`
+              ).join("")}
+              <option value="custom" ${
+                TILE_PRESETS.some(
+                  (p) => p.url === (o.map_tile_url || DEFAULT_TILE_URL)
+                )
+                  ? ""
+                  : "selected"
+              }>Eigen tegel-URL…</option>
+            </select>
+          </div>
+          <div class="hint muted">OpenStreetMap draait op door de gemeenschap
+            gefinancierde servers. Hun beleid staat toe wat dit paneel doet —
+            de tegels van het beeld dat je nu bekijkt — maar niet vooruit
+            inladen of gebieden opslaan; dat doet deze integratie ook niet.</div>
+        </div>
+        <div class="row">
+          <label class="title" for="tile_url">Tegel-URL</label>
           <div class="control">
             <input type="text" id="tile_url" spellcheck="false"
               placeholder="${escapeHtml(DEFAULT_TILE_URL)}"
@@ -2471,6 +2516,16 @@ class NlAlertPanel extends HTMLElement {
     });
     on("cast_at_night", "change", (ev) => {
       this._options.cast_at_night = ev.target.checked;
+    });
+    on("tile_preset", "change", (ev) => {
+      const preset = TILE_PRESETS.find((p) => p.id === ev.target.value);
+      if (!preset) return;  // "Eigen": laat de velden staan om te bewerken
+      this._options.map_tile_url = preset.url;
+      this._options.map_attribution = preset.attribution;
+      this._tileTemplate = preset.url;
+      this._attribution = preset.attribution;
+      this._renderSettings();
+      this._renderMap();
     });
     on("tile_url", "change", (ev) => {
       this._options.map_tile_url = ev.target.value.trim();
