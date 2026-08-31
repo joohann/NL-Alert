@@ -2628,7 +2628,7 @@ class NlAlertPanel extends HTMLElement {
           type: "lovelace/dashboards/create",
           url_path: URL_PATH,
           title: "NL-Alert TV",
-          icon: "mdi:alert",
+          icon: "nlalert:nl-alert",
           show_in_sidebar: false,
           require_admin: false,
         });

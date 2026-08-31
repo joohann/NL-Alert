@@ -30,12 +30,14 @@ _LOGGER = logging.getLogger(__name__)
 
 PANEL_URL_PATH = "nl-alert"
 PANEL_TITLE = "NL-Alert"
-PANEL_ICON = "mdi:alert"
+PANEL_ICON = "nlalert:nl-alert"  # brand mark, from frontend/nl-alert-icons.js
 STATIC_URL_PATH = "/nl_alert_panel_files"
 FRONTEND_SCRIPT_URL = f"{STATIC_URL_PATH}/nl-alert-panel.js"
 CARD_SCRIPT_URL = f"{STATIC_URL_PATH}/nl-alert-card.js"
+ICONS_SCRIPT_URL = f"{STATIC_URL_PATH}/nl-alert-icons.js"
 _STATIC_FILES_KEY = f"{DOMAIN}_static_files_registered"
 _CARD_KEY = f"{DOMAIN}_card_registered"
+_ICONS_KEY = f"{DOMAIN}_icons_registered"
 _PANEL_SIDEBAR_KEY = f"{DOMAIN}_panel_sidebar"
 
 
@@ -128,6 +130,22 @@ async def async_register_panel(
         version,
         show_in_sidebar,
     )
+
+
+async def async_register_icons(hass: HomeAssistant) -> None:
+    """Load the custom icon set so "nlalert:nl-alert" resolves to the mark.
+
+    Registered unconditionally and separately from the panel: the icon is
+    also what a user picks by hand for a dashboard button or an entity, so
+    it has to exist even when the sidebar entry is switched off.
+    """
+    if hass.data.get(_ICONS_KEY):
+        return
+    await async_register_static_files(hass)
+    version = await _asset_version(hass)
+    frontend.add_extra_js_url(hass, f"{ICONS_SCRIPT_URL}?v={version}")
+    hass.data[_ICONS_KEY] = True
+    _LOGGER.debug("NL-Alert icon set registered (%s, v%s)", ICONS_SCRIPT_URL, version)
 
 
 async def async_register_card(hass: HomeAssistant) -> None:

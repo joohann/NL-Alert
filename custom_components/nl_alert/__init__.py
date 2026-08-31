@@ -59,7 +59,12 @@ from .const import (
 )
 from .coordinator import NLAlertCoordinator
 from .notifier import async_run_test, error_summary, has_errors
-from .panel import async_register_card, async_register_panel, async_remove_panel
+from .panel import (
+    async_register_card,
+    async_register_icons,
+    async_register_panel,
+    async_remove_panel,
+)
 from .siren_test import SirenTestScheduler, async_holiday_entity
 from .websocket import async_register_websocket_commands
 
@@ -90,6 +95,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     async_register_websocket_commands(hass)
+    # Before the panel: the sidebar entry asks for "nlalert:nl-alert".
+    await async_register_icons(hass)
     # NOT removed first: async_register_panel re-registers only when the
     # sidebar setting actually changed. Tearing the panel down on every
     # reload kicked anyone viewing /nl-alert back to the default dashboard.
