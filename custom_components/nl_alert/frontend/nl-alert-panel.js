@@ -743,6 +743,38 @@ class NlAlertPanel extends HTMLElement {
     }
   }
 
+  // On mobile HA gives a custom panel no header, so there's no way back to the
+  // sidebar. Render our own sticky top bar (only when narrow) with a menu button
+  // that opens the HA sidebar via the standard hass-toggle-menu event.
+  set narrow(value) {
+    this._narrow = !!value;
+    this._mountTopbar();
+  }
+
+  _mountTopbar() {
+    const sr = this.shadowRoot;
+    if (!sr) return;
+    const ex = sr.getElementById("ha-topbar");
+    if (ex) ex.remove();
+    if (!this._narrow) return;
+    const bar = document.createElement("div");
+    bar.id = "ha-topbar";
+    bar.style.cssText =
+      "position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:6px;height:52px;" +
+      "padding:0 6px;box-shadow:0 2px 4px rgba(0,0,0,.15);" +
+      "background:var(--nl-alert-topbar-background,var(--app-header-background-color,#101a24));" +
+      "color:var(--nl-alert-topbar-text,var(--app-header-text-color,#eaf4f6))";
+    bar.innerHTML =
+      '<button aria-label="Menu" style="border:0;background:transparent;color:inherit;' +
+      'cursor:pointer;width:44px;height:44px;border-radius:50%;display:grid;place-items:center">' +
+      '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" ' +
+      'd="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg></button>' +
+      '<span style="font-size:18px;font-weight:600">NL-Alert</span>';
+    bar.querySelector("button").addEventListener("click", () =>
+      this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })));
+    sr.insertBefore(bar, sr.firstChild);
+  }
+
   connectedCallback() {
     if (!this._timer) {
       this._timer = setInterval(() => this._loadAlerts(), REFRESH_MS);
@@ -759,6 +791,7 @@ class NlAlertPanel extends HTMLElement {
 
   async _bootstrap() {
     this._renderShell();
+    this._mountTopbar();
     // Inlined rather than <img src> so the SVG scales with the header and
     // can inherit colour where it uses currentColor.
     if (!this._logoLight) {
@@ -876,6 +909,7 @@ class NlAlertPanel extends HTMLElement {
         <p class="muted">Staat de integratie ingesteld onder Instellingen →
         Apparaten &amp; diensten?</p>
       </div>`;
+    this._mountTopbar();
   }
 
   /* ── Rendering ─────────────────────────────────────────────────────────── */
