@@ -767,15 +767,25 @@ class NlAlertPanel extends HTMLElement {
       "margin:-16px -16px 14px;padding:0 12px;box-shadow:0 2px 6px rgba(0,0,0,.25);" +
       "background:var(--nl-alert-topbar-background,var(--nl-accent,#ffe500));" +
       "color:var(--nl-alert-topbar-text,var(--nl-on-accent,#111111))";
+    // Use the real NL-Alert wordmark (its SVG uses currentColor, so tying it
+    // to --nl-on-accent makes it dark on the yellow bar and white on the black
+    // bar). Falls back to text until the logo SVG has loaded.
+    const brand = this._logoLight
+      ? '<span class="tblogo" style="display:flex;align-items:center;color:var(--nl-on-accent,#111)">' + this._logoLight + '</span>'
+      : '<span style="font-size:18px;font-weight:600">NL-Alert</span>';
     bar.innerHTML =
       '<button aria-label="Menu" style="border:0;background:transparent;color:inherit;' +
       'cursor:pointer;width:44px;height:44px;border-radius:50%;display:grid;place-items:center">' +
       '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" ' +
-      'd="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg></button>' +
-      '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="flex:none">' +
-      '<path fill="currentColor" d="M12 2 1 21h22L12 2m0 3.99L19.53 19H4.47L12 5.99M11 10v4h2v-4h-2m0 6v2h2v-2h-2"/>' +
-      '</svg>' +
-      '<span style="font-size:18px;font-weight:600">NL-Alert</span>';
+      'd="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg></button>' + brand;
+    const logoSvg = bar.querySelector(".tblogo svg");
+    if (logoSvg) {
+      logoSvg.removeAttribute("width");
+      logoSvg.removeAttribute("height");
+      logoSvg.style.height = "26px";
+      logoSvg.style.width = "auto";
+      logoSvg.style.display = "block";
+    }
     bar.querySelector("button").addEventListener("click", () =>
       this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })));
     sr.insertBefore(bar, sr.firstChild);
@@ -822,6 +832,7 @@ class NlAlertPanel extends HTMLElement {
         load("nl-alert-logo.svg"),
         load("nl-alert-logo-diapositief.svg"),
       ]);
+      this._mountTopbar();  // re-mount so the wordmark replaces the text fallback
     }
     try {
       const config = await this._hass.callWS({ type: "nl_alert/get_config" });
