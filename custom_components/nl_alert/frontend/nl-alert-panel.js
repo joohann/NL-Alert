@@ -759,11 +759,14 @@ class NlAlertPanel extends HTMLElement {
     if (!this._narrow) return;
     const bar = document.createElement("div");
     bar.id = "ha-topbar";
+    // Full-bleed: cancel the :host { padding:16px } so the bar spans edge to
+    // edge and sits at the very top. NL-Alert's house style is yellow-on-black,
+    // so default to the brand accent (--nl-accent / --nl-on-accent).
     bar.style.cssText =
-      "position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:6px;height:52px;" +
-      "padding:0 6px;box-shadow:0 2px 4px rgba(0,0,0,.15);" +
-      "background:var(--nl-alert-topbar-background,var(--app-header-background-color,#101a24));" +
-      "color:var(--nl-alert-topbar-text,var(--app-header-text-color,#eaf4f6))";
+      "position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:8px;height:52px;" +
+      "margin:-16px -16px 14px;padding:0 12px;box-shadow:0 2px 6px rgba(0,0,0,.25);" +
+      "background:var(--nl-alert-topbar-background,var(--nl-accent,#ffe500));" +
+      "color:var(--nl-alert-topbar-text,var(--nl-on-accent,#111111))";
     bar.innerHTML =
       '<button aria-label="Menu" style="border:0;background:transparent;color:inherit;' +
       'cursor:pointer;width:44px;height:44px;border-radius:50%;display:grid;place-items:center">' +
