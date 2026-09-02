@@ -295,6 +295,9 @@ const STYLE = `
      line as the buttons instead of 8px below them. */
   .logo { color: var(--nl-wordmark); }
   .logo svg { height: 48px; width: auto; display: block; }
+  /* The mobile top bar already shows the wordmark, so shrink the big header
+     logo on narrow screens to avoid a jumbo duplicate. */
+  @media (max-width: 600px) { .logo svg { height: 32px; } }
 
   .busy {
     display: flex; flex-direction: column; align-items: center; gap: 14px;
@@ -782,9 +785,14 @@ class NlAlertPanel extends HTMLElement {
     if (logoSvg) {
       logoSvg.removeAttribute("width");
       logoSvg.removeAttribute("height");
-      logoSvg.style.height = "26px";
+      logoSvg.style.height = "24px";
       logoSvg.style.width = "auto";
       logoSvg.style.display = "block";
+      // The wordmark's flag mark has a fixed yellow fill (#f9e11e) that is
+      // invisible on the yellow bar — recolour it to match the (dark) text so
+      // the whole lockup reads as one clean monochrome logo.
+      bar.querySelectorAll('.tblogo [fill="#f9e11e"]').forEach(
+        (p) => p.setAttribute("fill", "currentColor"));
     }
     bar.querySelector("button").addEventListener("click", () =>
       this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })));
