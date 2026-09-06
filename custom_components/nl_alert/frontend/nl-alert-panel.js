@@ -27,6 +27,10 @@
  * New in 0.3.0 (2026-08-09).
  */
 
+// Gedeelde "Steun de ontwikkelaar"-knop + popup (Majikan). Eén bron van
+// waarheid; ditzelfde bestand staat in elke Majikan-integratie.
+import "./majikan-donate.js";
+
 const TILE_SIZE = 256;
 const REFRESH_MS = 30000;
 // Zoom search range and the pixel budget a rendered map may occupy. The
@@ -963,6 +967,7 @@ class NlAlertPanel extends HTMLElement {
         <summary>Recente NL-Alerts</summary>
         <div class="row"><div id="history" class="grow"></div></div>
       </details>
+      <majikan-donate lang="nl" accent="--nl-accent"></majikan-donate>
       <div id="dialog-root"></div>
       <div id="busy-root"></div>
       <div id="welcome-root"></div>`;
@@ -1186,6 +1191,8 @@ class NlAlertPanel extends HTMLElement {
           </div>
           <footer>
             <button id="welcome-ok">${escapeHtml(w.cta)}</button>
+            <span class="grow"></span>
+            <majikan-donate inline lang="nl" accent="--nl-accent"></majikan-donate>
           </footer>
         </div>
       </div>`;
@@ -1256,8 +1263,9 @@ class NlAlertPanel extends HTMLElement {
           <footer>
             <button id="save">Opslaan</button>
             <button class="ghost" id="cancel">Sluiten</button>
-            <span class="grow"></span>
             <span class="toast" id="toast"></span>
+            <span class="grow"></span>
+            <majikan-donate inline lang="nl" accent="--nl-accent"></majikan-donate>
           </footer>
         </div>
       </div>`;
