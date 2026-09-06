@@ -278,6 +278,327 @@ function escapeHtml(value) {
   );
 }
 
+/**
+ * A multi-select that stays shut until you need it.
+ *
+ * The settings dialog used to render every pick-list open, each with its own
+ * 190px scroll box inside the dialog's own scroll — six of them, and the
+ * speaker list alone ran to 16 rows. Collapsed triggers turn that into six
+ * one-line controls.
+ *
+ * Deliberately light DOM, no shadow root of its own: it lives inside the
+ * panel's shadow tree, so the panel's stylesheet reaches it and there is one
+ * place where these controls are styled instead of two.
+ *
+ * The list expands in flow rather than floating over the page. A floating
+ * popup would be clipped by the dialog body's `overflow-y: auto` the moment
+ * it opened near the bottom, and flipping upward only moves the problem to
+ * short viewports.
+ *
+ * Keyboard follows the ARIA combobox pattern: the trigger opens, focus lands
+ * on the search box (or the list itself when the list is short enough not to
+ * need one), arrows move `aria-activedescendant` without moving real focus,
+ * Space and Enter toggle, Escape closes and hands focus back to the trigger.
+ */
+class NlMultiSelect extends HTMLElement {
+  constructor() {
+    super();
+    this._options = [];
+    this._value = [];
+    this._open = false;
+    this._active = -1;
+    this._query = "";
+    this._id = `ms${Math.random().toString(36).slice(2, 8)}`;
+    this._onOutside = (ev) => {
+      if (this._open && !this.contains(ev.composedPath()[0])) this.close();
+    };
+  }
+
+  /** [{ value, label, sub, group, gone }] */
+  set options(list) {
+    this._options = Array.isArray(list) ? list : [];
+    this._render();
+  }
+
+  get options() {
+    return this._options;
+  }
+
+  set value(list) {
+    this._value = Array.isArray(list) ? [...list] : [];
+    this._render();
+  }
+
+  get value() {
+    return [...this._value];
+  }
+
+  connectedCallback() {
+    // Pointerdown, not click: a click that starts inside and ends outside
+    // (dragging across the list) should not count as "clicked away".
+    this.getRootNode().addEventListener("pointerdown", this._onOutside, true);
+    this._render();
+  }
+
+  disconnectedCallback() {
+    this.getRootNode().removeEventListener("pointerdown", this._onOutside, true);
+  }
+
+  open() {
+    if (this._open) return;
+    this._open = true;
+    this._active = this._visible().findIndex((o) =>
+      this._value.includes(o.value)
+    );
+    this._render();
+    const search = this.querySelector(".ms-search");
+    (search || this.querySelector(".ms-list")).focus();
+    // A list opening at the bottom of the dialog would otherwise expand out
+    // of sight, leaving the user looking at an unchanged screen.
+    this.querySelector(".ms-panel").scrollIntoView({
+      block: "nearest",
+      behavior: "smooth",
+    });
+  }
+
+  close({ focusTrigger = false } = {}) {
+    if (!this._open) return;
+    this._open = false;
+    this._query = "";
+    this._active = -1;
+    this._render();
+    if (focusTrigger) this.querySelector(".ms-trigger").focus();
+  }
+
+  toggle() {
+    this._open ? this.close() : this.open();
+  }
+
+  _visible() {
+    const needle = this._query.trim().toLowerCase();
+    if (!needle) return this._options;
+    // Anything already ticked stays listed whatever you type, so a filter can
+    // never hide what you are about to switch off.
+    return this._options.filter(
+      (o) =>
+        this._value.includes(o.value) ||
+        (o.label || "").toLowerCase().includes(needle) ||
+        (o.value || "").toLowerCase().includes(needle)
+    );
+  }
+
+  _toggleValue(value) {
+    this._value = this._value.includes(value)
+      ? this._value.filter((v) => v !== value)
+      : [...this._value, value];
+    this._render();
+    this.dispatchEvent(
+      new CustomEvent("change", {
+        detail: { value: this.value },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  _summary() {
+    if (!this._value.length) return this.dataset.placeholder || "— niets gekozen —";
+    const labels = this._value.map((v) => {
+      const found = this._options.find((o) => o.value === v);
+      return found ? found.label : v;
+    });
+    if (labels.length <= 2) return labels.join(", ");
+    return `${labels[0]}, ${labels[1]} +${labels.length - 2}`;
+  }
+
+  _render() {
+    const visible = this._visible();
+    const searchable = this._options.length > 7;
+    const chosen = new Set(this._value);
+    const listId = `${this._id}-list`;
+    const activeId =
+      this._active >= 0 && visible[this._active]
+        ? `${this._id}-o${this._active}`
+        : "";
+
+    let lastGroup = null;
+    const rows = visible
+      .map((option, index) => {
+        const head =
+          option.group && option.group !== lastGroup
+            ? `<div class="ms-group" role="presentation">${escapeHtml(option.group)}</div>`
+            : "";
+        lastGroup = option.group || lastGroup;
+        return `${head}<div class="ms-opt${
+          index === this._active ? " active" : ""
+        }" role="option" id="${this._id}-o${index}"
+             aria-selected="${chosen.has(option.value)}"
+             data-value="${escapeHtml(option.value)}">
+          <span class="ms-check" aria-hidden="true">${
+            chosen.has(option.value) ? "✓" : ""
+          }</span>
+          <span class="ms-label">${escapeHtml(option.label)}
+            <span class="sub">${escapeHtml(option.sub || "")}</span></span>
+        </div>`;
+      })
+      .join("");
+
+    this.className = `ms${this._open ? " open" : ""}` + (this.dataset.invalid === "true" ? " invalid" : "");
+    this.innerHTML = `
+      <button type="button" class="ms-trigger" aria-haspopup="listbox"
+              aria-expanded="${this._open}" aria-controls="${listId}">
+        <span class="ms-summary${this._value.length ? "" : " muted"}"
+          >${escapeHtml(this._summary())}</span>
+        ${
+          this._value.length
+            ? `<span class="ms-count">${this._value.length}</span>`
+            : ""
+        }
+        <span class="ms-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="ms-panel" ${this._open ? "" : "hidden"}>
+        ${
+          searchable
+            ? `<input type="text" class="ms-search" role="combobox"
+                 aria-expanded="true" aria-controls="${listId}"
+                 aria-autocomplete="list"
+                 ${activeId ? `aria-activedescendant="${activeId}"` : ""}
+                 aria-label="Zoeken in de lijst"
+                 placeholder="Zoeken…" value="${escapeHtml(this._query)}">`
+            : ""
+        }
+        <div class="ms-list" id="${listId}" role="listbox"
+             aria-multiselectable="true"
+             ${searchable ? "" : 'tabindex="-1"'}
+             ${!searchable && activeId ? `aria-activedescendant="${activeId}"` : ""}
+             aria-label="${escapeHtml(this.dataset.label || "Keuzelijst")}">
+          ${rows || `<div class="ms-empty muted">Niets gevonden.</div>`}
+        </div>
+        <div class="ms-foot">
+          <button type="button" class="link" data-act="clear" ${
+            this._value.length ? "" : "disabled"
+          }>Alles wissen</button>
+          <span class="muted">${this._value.length} van ${
+            this._options.length
+          }</span>
+        </div>
+      </div>`;
+
+    this._wire();
+  }
+
+  _wire() {
+    this.querySelector(".ms-trigger").addEventListener("click", () =>
+      this.toggle()
+    );
+    if (!this._open) return;
+
+    this.querySelectorAll(".ms-opt").forEach((node) =>
+      node.addEventListener("click", () => this._toggleValue(node.dataset.value))
+    );
+    this.querySelector('[data-act="clear"]').addEventListener("click", () => {
+      this._value = [];
+      this._render();
+      this.dispatchEvent(
+        new CustomEvent("change", {
+          detail: { value: [] },
+          bubbles: true,
+          composed: true,
+        })
+      );
+      (this.querySelector(".ms-search") || this.querySelector(".ms-list")).focus();
+    });
+
+    const search = this.querySelector(".ms-search");
+    if (search) {
+      search.addEventListener("input", (ev) => {
+        this._query = ev.target.value;
+        this._active = -1;
+        this._render();
+        const again = this.querySelector(".ms-search");
+        again.focus();
+        again.setSelectionRange(again.value.length, again.value.length);
+      });
+    }
+    const keyTarget = search || this.querySelector(".ms-list");
+    keyTarget.addEventListener("keydown", (ev) => this._onKey(ev));
+  }
+
+  _onKey(ev) {
+    const visible = this._visible();
+    const move = (delta) => {
+      ev.preventDefault();
+      if (!visible.length) return;
+      this._active =
+        this._active < 0
+          ? delta > 0
+            ? 0
+            : visible.length - 1
+          : (this._active + delta + visible.length) % visible.length;
+      this._paintActive();
+    };
+
+    switch (ev.key) {
+      case "ArrowDown":
+        return move(1);
+      case "ArrowUp":
+        return move(-1);
+      case "Home":
+        ev.preventDefault();
+        this._active = 0;
+        return this._paintActive();
+      case "End":
+        ev.preventDefault();
+        this._active = visible.length - 1;
+        return this._paintActive();
+      case " ":
+        // Only a shortcut when there is no search box. With one, a space
+        // belongs in the query — you cannot type "tv slaapkamer" otherwise.
+        if (this.querySelector(".ms-search")) return;
+      // falls through
+      case "Enter":
+        if (this._active >= 0 && visible[this._active]) {
+          ev.preventDefault();
+          this._toggleValue(visible[this._active].value);
+          (this.querySelector(".ms-search") || this.querySelector(".ms-list")).focus();
+        }
+        return;
+      case "Escape":
+        ev.preventDefault();
+        // Stops here: the settings dialog behind this one also listens for
+        // Escape, and closing both at once loses the user's place.
+        ev.stopPropagation();
+        return this.close({ focusTrigger: true });
+      case "Tab":
+        return this.close();
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Moves the highlight without a re-render: rebuilding the list on every
+   * arrow key would drop focus out of the search box mid-keystroke.
+   */
+  _paintActive() {
+    const nodes = [...this.querySelectorAll(".ms-opt")];
+    nodes.forEach((node, index) =>
+      node.classList.toggle("active", index === this._active)
+    );
+    const current = nodes[this._active];
+    const owner = this.querySelector(".ms-search") || this.querySelector(".ms-list");
+    if (current) {
+      owner.setAttribute("aria-activedescendant", current.id);
+      current.scrollIntoView({ block: "nearest" });
+    } else {
+      owner.removeAttribute("aria-activedescendant");
+    }
+  }
+}
+
+customElements.define("nl-multiselect", NlMultiSelect);
+
+
 /** Distance in km, rounded the way a person would say it. */
 function formatKm(km) {
   if (km == null) return "";
@@ -426,11 +747,10 @@ const STYLE = `
     border: 1px solid var(--divider-color, #e0e0e0);
     border-radius: 8px;
   }
-  /* Boolean settings as switches. Only DIRECT children of .control — the
-     checkboxes inside a picklist are a multi-select, not a setting, and a
-     column of switches there reads as a switchboard rather than a list.
-     The track radius matches the buttons (8px) instead of the usual pill,
-     so the whole panel keeps one corner language. */
+  /* Boolean settings as switches. Only DIRECT children of .control, so the
+     rule cannot reach into a multi-select. The track radius matches the
+     buttons (8px) instead of the usual pill, so the whole panel keeps one
+     corner language. */
   .row > .control > input[type="checkbox"] {
     appearance: none; -webkit-appearance: none; margin: 0;
     flex: 0 0 auto; position: relative; cursor: pointer;
@@ -455,33 +775,93 @@ const STYLE = `
     outline: 2px solid var(--nl-accent); outline-offset: 2px;
   }
   /* The multi-selects stay checkboxes, but in the brand colour. */
-  .picklist input[type="checkbox"] { accent-color: #ffe500; }
 
   input[type="range"] { width: 100%; accent-color: #ffe500; }
-  input.invalid, select.invalid, .picklist.invalid {
+  input.invalid, select.invalid {
     border-color: var(--nl-accent); border-width: 2px;
   }
 
-  .picklist {
-    max-height: 190px; overflow-y: auto; width: 100%;
+
+  /* Multi-select. One line when shut, a list when open — see NlMultiSelect. */
+  .ms { display: block; width: 100%; position: relative; }
+  .ms-trigger {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    min-height: 44px; padding: 8px 12px; text-align: left; font-weight: 400;
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color, #212121);
     border: 1px solid var(--divider-color, #e0e0e0); border-radius: 8px;
-    padding: 4px 0;
   }
-  .picklist .empty { padding: 10px 12px; }
-  .picklist label {
-    display: flex; align-items: center; gap: 10px;
-    padding: 6px 12px; font-size: 14px; cursor: pointer;
+  .ms-trigger:hover { border-color: var(--nl-accent); }
+  .ms-trigger:focus-visible {
+    outline: 2px solid var(--nl-accent); outline-offset: 2px;
   }
-  .picklist label:hover { background: var(--secondary-background-color, #f5f5f5); }
-  .picklist .sub { color: var(--secondary-text-color, #727272); font-size: 12px; }
-  .picklist .group {
-    padding: 8px 12px 4px; font-size: 11px; font-weight: 600;
+  .ms-summary {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ms-count {
+    flex: none; min-width: 20px; padding: 1px 7px; border-radius: 10px;
+    font-size: 12px; font-weight: 600; text-align: center;
+    background: var(--nl-accent); color: var(--nl-on-accent);
+  }
+  .ms-caret { flex: none; font-size: 11px; transition: transform .15s ease; }
+  .ms.open .ms-caret { transform: rotate(180deg); }
+  .ms.open .ms-trigger {
+    border-color: var(--nl-accent);
+    border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+  }
+  .ms-panel {
+    border: 1px solid var(--nl-accent); border-top: none;
+    border-radius: 0 0 8px 8px; padding: 8px;
+    background: var(--card-background-color, #fff);
+  }
+  .ms-search {
+    width: 100%; box-sizing: border-box; margin-bottom: 6px;
+  }
+  .ms-list { max-height: 240px; overflow-y: auto; }
+  .ms-list:focus-visible { outline: 2px solid var(--nl-accent); outline-offset: 2px; }
+  .ms-group {
+    padding: 8px 8px 4px; font-size: 11px; font-weight: 600;
     text-transform: uppercase; letter-spacing: .04em;
     color: var(--secondary-text-color, #727272);
   }
-  .picklist label[hidden] { display: none; }
-  .filter {
-    width: 100%; box-sizing: border-box; margin-bottom: 6px;
+  .ms-opt {
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    min-height: 44px; padding: 6px 8px; border-radius: 6px; font-size: 14px;
+  }
+  .ms-opt:hover, .ms-opt.active {
+    background: var(--secondary-background-color, #f2f2f2);
+  }
+  /* The highlight is a ring as well as a fill, so it survives being the
+     only cue for someone who cannot separate the two greys. */
+  .ms-opt.active { box-shadow: inset 0 0 0 2px var(--nl-accent); }
+  .ms-check {
+    flex: none; width: 18px; height: 18px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    border: 1px solid var(--divider-color, #bdbdbd);
+  }
+  .ms-opt[aria-selected="true"] .ms-check {
+    background: var(--nl-accent); color: var(--nl-on-accent);
+    border-color: var(--nl-accent);
+  }
+  .ms-label { min-width: 0; }
+  .ms-label .sub {
+    color: var(--secondary-text-color, #727272); font-size: 12px;
+  }
+  .ms-empty { padding: 12px 8px; }
+  .ms-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 8px 8px 2px; font-size: 12px;
+    border-top: 1px solid var(--divider-color, #eee); margin-top: 6px;
+  }
+  button.link {
+    background: none; border: none; padding: 4px 0; font-size: 12px;
+    color: var(--primary-text-color, #212121); text-decoration: underline;
+  }
+  button.link[disabled] { opacity: .4; text-decoration: none; cursor: default; }
+  .ms.invalid .ms-trigger { border-color: #d32f2f; }
+  @media (prefers-reduced-motion: reduce) {
+    .ms-caret { transition: none; }
   }
   /* Small round "?" next to a label. Sized off the label so it never drags
      the row height around. */
@@ -2053,19 +2433,10 @@ class NlAlertPanel extends HTMLElement {
         <div class="row">
           <label class="title">Speakers</label>
           <div class="control">
-            <div class="picklist${
-              this._fieldError("media_players") ? " invalid" : ""
-            }" id="players">
-              ${this._checkboxes(
-                this._lists.players.map((p) => ({
-                  value: p.entity_id,
-                  label: p.name,
-                  sub: p.entity_id,
-                })),
-                o.media_players || [],
-                "player"
-              )}
-            </div>
+            <nl-multiselect id="players" data-label="Speakers"
+              data-placeholder="— kies je speakers —"
+              data-invalid="${this._fieldError("media_players") ? "true" : "false"}"
+            ></nl-multiselect>
           </div>
         </div>
         <div class="row">
@@ -2087,14 +2458,8 @@ class NlAlertPanel extends HTMLElement {
           <label class="title">Sirene<button type="button" class="help-btn"
             id="siren-help" aria-label="Uitleg over sirenes">?</button></label>
           <div class="control">
-            <div class="grow">
-              <input type="search" class="filter" id="siren-filter"
-                placeholder="Zoeken op naam of entity id…"
-                value="${escapeHtml(this._sirenFilter || "")}">
-              <div class="picklist" id="sirens">
-                ${this._sirenCheckboxes(o.siren_entities || [])}
-              </div>
-            </div>
+            <nl-multiselect id="sirens" data-label="Sirenes en schakelaars"
+              data-placeholder="— geen sirene —"></nl-multiselect>
           </div>
           <div class="hint muted">Gaat tegelijk met het alarmgeluid af, en
             ook als je helemaal geen speakers hebt ingesteld. Nachtmodus
@@ -2295,35 +2660,17 @@ class NlAlertPanel extends HTMLElement {
         <div class="row">
           <label class="title">Notify-services</label>
           <div class="control">
-            <div class="picklist${
-              this._fieldError("notify_services") ? " invalid" : ""
-            }" id="notify">
-              ${this._checkboxes(
-                this._lists.notify.map((n) => ({
-                  value: n.service,
-                  label: n.name,
-                  sub: n.service,
-                })),
-                o.notify_services || [],
-                "notify"
-              )}
-            </div>
+            <nl-multiselect id="notify" data-label="Notify-services"
+              data-placeholder="— geen notificaties —"
+              data-invalid="${this._fieldError("notify_services") ? "true" : "false"}"
+            ></nl-multiselect>
           </div>
         </div>
         <div class="row">
           <label class="title">Uitspreken i.p.v. toon</label>
           <div class="control">
-            <div class="picklist" id="notify-tts">
-              ${this._checkboxes(
-                this._lists.notify.map((n) => ({
-                  value: n.service,
-                  label: n.name,
-                  sub: n.service,
-                })),
-                o.notify_tts_targets || [],
-                "notifytts"
-              )}
-            </div>
+            <nl-multiselect id="notify-tts" data-label="Toestellen die voorlezen"
+              data-placeholder="— geen —"></nl-multiselect>
           </div>
           <div class="hint muted">Voor toestellen die de alarm-stream
             negeren — veel Samsung-telefoons doen dat. De app spreekt het
@@ -2388,25 +2735,10 @@ class NlAlertPanel extends HTMLElement {
         <div class="row">
           <label class="title">TV's</label>
           <div class="control">
-            <div class="picklist${
-              this._fieldError("cast_entities") ? " invalid" : ""
-            }" id="cast-targets">
-              ${this._checkboxes(
-                this._lists.players
-                  .filter((p) => p.platform === "cast")
-                  .map((p) => ({
-                    value: p.entity_id,
-                    label: p.name,
-                    sub: p.entity_id,
-                  })),
-                o.cast_entities && o.cast_entities.length
-                  ? o.cast_entities
-                  : o.cast_entity
-                    ? [o.cast_entity]
-                    : [],
-                "casttarget"
-              )}
-            </div>
+            <nl-multiselect id="cast-targets" data-label="TV's"
+              data-placeholder="— kies een TV —"
+              data-invalid="${this._fieldError("cast_entities") ? "true" : "false"}"
+            ></nl-multiselect>
           </div>
           <div class="hint muted">Alleen apparaten van de cast-integratie —
             HA Cast werkt niet met andere media players.</div>
@@ -2448,17 +2780,8 @@ class NlAlertPanel extends HTMLElement {
         <div class="row">
           <label class="title">Aanzetten via</label>
           <div class="control">
-            <div class="picklist" id="cast-power">
-              ${this._checkboxes(
-                (this._lists.power || []).map((p) => ({
-                  value: p.entity_id,
-                  label: p.name,
-                  sub: p.entity_id,
-                })),
-                o.cast_power_entities || [],
-                "castpower"
-              )}
-            </div>
+            <nl-multiselect id="cast-power" data-label="Entiteiten die de TV aanzetten"
+              data-placeholder="— geen —"></nl-multiselect>
           </div>
           <div class="hint muted">Lukt het aanzetten via de cast-entiteit niet,
             kies dan hier de bijbehorende remote — bij een Android TV is dat
@@ -2585,6 +2908,7 @@ class NlAlertPanel extends HTMLElement {
       </details>`;
 
     this._wireSettings();
+    this._wirePickers();
   }
 
   /**
@@ -2632,86 +2956,88 @@ class NlAlertPanel extends HTMLElement {
     return groups.join("");
   }
 
-  _checkboxes(items, selected, name) {
-    if (!items.length) {
-      return `<div class="empty muted">Niets gevonden.</div>`;
-    }
-    const chosen = new Set(selected);
-    // Anything stored but no longer present still gets a row, checked, so a
-    // stale entity is visible instead of silently vanishing from the UI.
-    const known = new Set(items.map((i) => i.value));
-    const extras = [...chosen]
-      .filter((v) => !known.has(v))
-      .map((v) => ({ value: v, label: v, sub: "bestaat niet meer" }));
-    return [...extras, ...items]
-      .map(
-        (item) => `
-        <label>
-          <input type="checkbox" data-group="${name}"
-            value="${escapeHtml(item.value)}" ${
-              chosen.has(item.value) ? "checked" : ""
-            }>
-          <span>${escapeHtml(item.label)}
-            <span class="sub">${escapeHtml(item.sub || "")}</span></span>
-        </label>`
-      )
-      .join("");
+  /**
+   * Every multi-select on the settings form, in one table: what goes in it,
+   * what is currently ticked, and where a change lands. Keeping it here
+   * rather than beside each control means the six of them cannot drift apart.
+   */
+  _pickers() {
+    const o = this._options;
+    const ent = (list) =>
+      (list || []).map((x) => ({
+        value: x.entity_id,
+        label: x.name,
+        sub: x.entity_id,
+      }));
+    const svc = (list) =>
+      (list || []).map((x) => ({ value: x.service, label: x.name, sub: x.service }));
+
+    return [
+      {
+        id: "players",
+        options: ent(this._lists.players),
+        value: o.media_players || [],
+        apply: (v) => (this._options.media_players = v),
+      },
+      {
+        id: "sirens",
+        options: (this._lists.sirens || []).map((x) => ({
+          value: x.entity_id,
+          label: x.name,
+          sub: x.entity_id,
+          group: x.domain === "siren" ? "Sirenes" : "Schakelaars",
+        })),
+        value: o.siren_entities || [],
+        apply: (v) => (this._options.siren_entities = v),
+      },
+      {
+        id: "notify",
+        options: svc(this._lists.notify),
+        value: o.notify_services || [],
+        apply: (v) => (this._options.notify_services = v),
+      },
+      {
+        id: "notify-tts",
+        options: svc(this._lists.notify),
+        value: o.notify_tts_targets || [],
+        apply: (v) => (this._options.notify_tts_targets = v),
+      },
+      {
+        id: "cast-targets",
+        options: ent((this._lists.players || []).filter((x) => x.platform === "cast")),
+        // cast_entity is the pre-0.12 single-TV setting; still honoured so an
+        // upgrade does not silently forget which TV was chosen.
+        value:
+          o.cast_entities && o.cast_entities.length
+            ? o.cast_entities
+            : o.cast_entity
+              ? [o.cast_entity]
+              : [],
+        apply: (v) => (this._options.cast_entities = v),
+      },
+      {
+        id: "cast-power",
+        options: ent(this._lists.power),
+        value: o.cast_power_entities || [],
+        apply: (v) => (this._options.cast_power_entities = v),
+      },
+    ];
   }
 
-  /**
-   * The siren picker. Separate from _checkboxes because this list is the
-   * switch domain — 266 entries on this install — so it needs grouping and
-   * a filter, and anything already chosen stays visible whatever you type.
-   */
-  _sirenCheckboxes(selected) {
-    const chosen = new Set(selected);
-    const items = this._lists.sirens || [];
-    const known = new Set(items.map((i) => i.entity_id));
-    const stale = [...chosen]
-      .filter((v) => !known.has(v))
-      .map((v) => ({ entity_id: v, name: v, domain: "", gone: true }));
-
-    const needle = (this._sirenFilter || "").trim().toLowerCase();
-    const matches = (item) =>
-      chosen.has(item.entity_id) ||
-      !needle ||
-      item.name.toLowerCase().includes(needle) ||
-      item.entity_id.toLowerCase().includes(needle);
-
-    const rows = (list) =>
-      list
-        .map(
-          (item) => `
-        <label ${matches(item) ? "" : "hidden"} data-entity="${escapeHtml(
-          item.entity_id
-        )}">
-          <input type="checkbox" data-group="siren"
-            value="${escapeHtml(item.entity_id)}" ${
-              chosen.has(item.entity_id) ? "checked" : ""
-            }>
-          <span>${escapeHtml(item.name)}
-            <span class="sub">${escapeHtml(
-              item.gone ? "bestaat niet meer" : item.entity_id
-            )}</span></span>
-        </label>`
-        )
-        .join("");
-
-    const sirens = items.filter((i) => i.domain === "siren");
-    const switches = items.filter((i) => i.domain === "switch");
-    const parts = [];
-    if (stale.length) parts.push(rows(stale));
-    parts.push(
-      `<div class="group">Sirenes</div>`,
-      sirens.length
-        ? rows(sirens)
-        : `<div class="empty muted">Geen sirene-entiteiten gevonden. Klik op
-             het vraagteken hierboven.</div>`
-    );
-    if (switches.length) {
-      parts.push(`<div class="group">Schakelaars</div>`, rows(switches));
+  _wirePickers() {
+    for (const picker of this._pickers()) {
+      const node = this.shadowRoot.getElementById(picker.id);
+      if (!node) continue;
+      const known = new Set(picker.options.map((x) => x.value));
+      // A stored entity that has since disappeared still gets a row, ticked,
+      // so it can be seen and switched off instead of vanishing silently.
+      const stale = picker.value
+        .filter((v) => !known.has(v))
+        .map((v) => ({ value: v, label: v, sub: "bestaat niet meer" }));
+      node.options = [...stale, ...picker.options];
+      node.value = picker.value;
+      node.addEventListener("change", (ev) => picker.apply(ev.detail.value));
     }
-    return parts.join("");
   }
 
   _wireSettings() {
@@ -2841,16 +3167,6 @@ class NlAlertPanel extends HTMLElement {
     on("preview", "click", () => this._previewSound());
     on("make-dashboard", "click", () => this._createDashboard());
 
-    root.querySelectorAll('input[data-group="player"]').forEach((node) =>
-      node.addEventListener("change", () => {
-        this._options.media_players = this._collect("player");
-      })
-    );
-    root.querySelectorAll('input[data-group="siren"]').forEach((node) =>
-      node.addEventListener("change", () => {
-        this._options.siren_entities = this._collect("siren");
-      })
-    );
     on("siren_follow", "change", (ev) => {
       this._options.siren_follow_sound = ev.target.checked;
       // Flip the one field it governs instead of re-rendering: _renderSettings
@@ -2866,47 +3182,8 @@ class NlAlertPanel extends HTMLElement {
       );
     });
     on("siren-help", "click", () => this._openHelp("siren"));
-    on("siren-filter", "input", (ev) => {
-      // Filtering in place instead of re-rendering: a re-render would blur
-      // the field and drop what you were halfway through typing.
-      this._sirenFilter = ev.target.value;
-      const needle = this._sirenFilter.trim().toLowerCase();
-      root.querySelectorAll("#sirens label").forEach((label) => {
-        const id = (label.dataset.entity || "").toLowerCase();
-        const text = (label.textContent || "").toLowerCase();
-        const checked = label.querySelector("input").checked;
-        label.hidden = !(checked || !needle || id.includes(needle) || text.includes(needle));
-      });
-    });
-    root.querySelectorAll('input[data-group="notify"]').forEach((node) =>
-      node.addEventListener("change", () => {
-        this._options.notify_services = this._collect("notify");
-      })
-    );
-    root.querySelectorAll('input[data-group="casttarget"]').forEach((node) =>
-      node.addEventListener("change", () => {
-        this._options.cast_entities = this._collect("casttarget");
-      })
-    );
-    root.querySelectorAll('input[data-group="notifytts"]').forEach((node) =>
-      node.addEventListener("change", () => {
-        this._options.notify_tts_targets = this._collect("notifytts");
-      })
-    );
-    root.querySelectorAll('input[data-group="castpower"]').forEach((node) =>
-      node.addEventListener("change", () => {
-        this._options.cast_power_entities = this._collect("castpower");
-      })
-    );
   }
 
-  _collect(group) {
-    return [
-      ...this.shadowRoot.querySelectorAll(
-        `input[data-group="${group}"]:checked`
-      ),
-    ].map((node) => node.value);
-  }
 
   _previewSound() {
     const url = this._options.alarm_sound_url;
