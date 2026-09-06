@@ -85,6 +85,28 @@ LANGUAGE_CANDIDATES = {
 DEFAULT_ALARM_DURATION = 5
 DEFAULT_VOLUME_PCT = 70
 
+# Sirens. A speaker is easy to sleep through and easy to have turned down
+# from a previous song; a dedicated siren is neither. Runs alongside the
+# alarm sound rather than instead of it.
+#
+# switch.* is accepted next to siren.*: a siren on a smart plug is how most
+# people actually have one, and the switch domain is where those land.
+CONF_SIREN_ENTITIES = "siren_entities"    # list[str], siren.* or switch.*
+CONF_SIREN_DURATION = "siren_duration"    # seconds; 0 = leave it running
+DEFAULT_SIREN_DURATION = 15
+
+# Let the siren run exactly as long as the alarm sound, so the two stop
+# together instead of one trailing the other. Read from the file itself:
+# exact for WAV (which is what ships here, 0.7 to 7.0 seconds), estimated
+# for MP3. When the length cannot be worked out — a remote URL, an unknown
+# container — the fixed number above is used instead.
+CONF_SIREN_FOLLOW_SOUND = "siren_follow_sound"   # bool, default True
+
+# SirenEntityFeature.DURATION. When a siren advertises it, the run time goes
+# to the device itself, which then keeps its promise even if HA restarts
+# halfway through. Without it we schedule the turn_off ourselves.
+SIREN_FEATURE_DURATION = 16
+
 # Night mode. A speaker set to 70% is fine in a noisy living room and
 # genuinely painful at 03:00. Driven by a plain time window rather than a
 # helper entity: this integration runs in other people's setups, and a window
