@@ -71,6 +71,43 @@ const STATUS_ICON = { ok: "✔", warning: "⚠", skipped: "–", error: "✖" };
 // Shown once per installation, and reachable afterwards under "Over" in the
 // settings. The disclaimer is the point: someone who installs this could
 // reasonably assume it is an official channel, and it is not.
+/**
+ * Contextual help behind the "?" buttons in the settings dialog. Kept as
+ * data rather than markup so a topic is one object, not a block of HTML
+ * buried three levels into a template string.
+ */
+const HELP = {
+  siren: {
+    title: "Een sirene koppelen",
+    body: [
+      "Een speaker is makkelijk te overhoren. Hij staat in één kamer, en " +
+        "hoe hard hij aangaat hangt af van wat je er als laatste op hebt " +
+        "afgespeeld. Een sirene doet één ding, en doet dat hard.",
+      "NL-Alert stuurt elke entiteit uit het siren-domein aan, en ook een " +
+        "gewone switch — een sirene op een slimme stekker telt dus gewoon " +
+        "mee. Bij een alert gaat hij tegelijk met het alarmgeluid aan en na " +
+        "de ingestelde tijd vanzelf weer uit.",
+    ],
+    example: {
+      head: "Bijvoorbeeld: Sonoff SNZB-09P",
+      body:
+        "Een Zigbee-sirene voor binnen. Koppel hem aan Zigbee2MQTT of ZHA, " +
+        "dan verschijnt hij vanzelf in de lijst hierboven.",
+      link: "sonoff.tech — SNZB-09P",
+      href:
+        "https://sonoff.tech/en-nl/products/" +
+        "sonoff-zigbee-senseguard-indoor-siren-snzb-09p",
+    },
+    footer: [
+      "Dat is een voorbeeld en geen aanbeveling: alles wat in Home " +
+        "Assistant als siren of switch verschijnt werkt hier.",
+      "Let op: nachtmodus geldt niet voor de sirene. Nachtmodus verlaagt " +
+        "een volume, en een sirene heeft er geen — een sirene die om 03:00 " +
+        "beleefd blijft is een sirene die zijn werk niet doet.",
+    ],
+  },
+};
+
 const WELCOME = {
   title: "NL-Alert in Home Assistant",
   intro:
@@ -437,6 +474,38 @@ const STYLE = `
   }
   .picklist label:hover { background: var(--secondary-background-color, #f5f5f5); }
   .picklist .sub { color: var(--secondary-text-color, #727272); font-size: 12px; }
+  .picklist .group {
+    padding: 8px 12px 4px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em;
+    color: var(--secondary-text-color, #727272);
+  }
+  .picklist label[hidden] { display: none; }
+  .filter {
+    width: 100%; box-sizing: border-box; margin-bottom: 6px;
+  }
+  /* Small round "?" next to a label. Sized off the label so it never drags
+     the row height around. */
+  .help-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; padding: 0; margin-left: 6px;
+    border-radius: 50%; font-size: 12px; font-weight: 700; line-height: 1;
+    vertical-align: middle;
+    background: var(--secondary-background-color, #f0f0f0);
+    color: var(--secondary-text-color, #727272);
+  }
+  .help-btn:hover { background: var(--nl-accent); color: var(--nl-on-accent); }
+  .dialog.help { width: min(520px, 100%); }
+  .dialog.help .body { padding: 20px 24px 4px; }
+  .dialog.help h2 { margin: 0 0 12px; font-size: 18px; }
+  .dialog.help p { margin: 0 0 14px; font-size: 14px; line-height: 1.55; }
+  .dialog.help a { color: inherit; }
+  .dialog.help .example {
+    border: 1px solid var(--divider-color, #e0e0e0); border-radius: 10px;
+    padding: 12px 14px; margin: 0 0 14px;
+  }
+  .dialog.help .example strong { display: block; margin-bottom: 4px; }
+  /* Above the settings dialog: this opens from inside it. */
+  .overlay.help-overlay { z-index: 20; }
 
   button {
     font-family: inherit; font-size: 14px; cursor: pointer; font-weight: 500;
@@ -712,6 +781,7 @@ class NlAlertPanel extends HTMLElement {
     this._lists = {
       players: [],
       notify: [],
+      sirens: [],
       tts: { engines: [], services: [] },
       audio: { builtin: [], local: [] },
     };
@@ -866,10 +936,11 @@ class NlAlertPanel extends HTMLElement {
       return;
     }
 
-    const [players, notify, power, tts, audio] = await Promise.all([
+    const [players, notify, power, sirens, tts, audio] = await Promise.all([
       this._safeWS("nl_alert/list_media_players", []),
       this._safeWS("nl_alert/list_notify_services", []),
       this._safeWS("nl_alert/list_power_entities", []),
+      this._safeWS("nl_alert/list_sirens", []),
       this._safeWS("nl_alert/list_tts_services", {
         engines: [],
         services: [],
@@ -885,6 +956,7 @@ class NlAlertPanel extends HTMLElement {
       players: asArray(players),
       notify: asArray(notify),
       power: asArray(power),
+      sirens: asArray(sirens),
       tts: {
         engines: asArray(tts && tts.engines),
         services: asArray(tts && tts.services),
@@ -970,7 +1042,8 @@ class NlAlertPanel extends HTMLElement {
       <majikan-donate lang="nl" accent="--nl-accent"></majikan-donate>
       <div id="dialog-root"></div>
       <div id="busy-root"></div>
-      <div id="welcome-root"></div>`;
+      <div id="welcome-root"></div>
+      <div id="help-root"></div>`;
   }
 
   _renderAll() {
@@ -1220,13 +1293,74 @@ class NlAlertPanel extends HTMLElement {
     }
   }
 
+  /* ── Help ──────────────────────────────────────────────────────────────── */
+
+  _openHelp(topic) {
+    const root = this.shadowRoot.getElementById("help-root");
+    const help = HELP[topic];
+    if (!root || !help) return;
+    root.innerHTML = `
+      <div class="overlay help-overlay" id="help-overlay">
+        <div class="dialog help" role="dialog" aria-modal="true"
+             aria-label="${escapeHtml(help.title)}">
+          <header>
+            <h2>${escapeHtml(help.title)}</h2>
+            <span class="grow" style="flex:1"></span>
+            <button class="icon-btn" id="help-close" aria-label="Sluiten">✕</button>
+          </header>
+          <div class="body">
+            ${help.body.map((t) => `<p>${escapeHtml(t)}</p>`).join("")}
+            <div class="example">
+              <strong>${escapeHtml(help.example.head)}</strong>
+              ${escapeHtml(help.example.body)}
+              <p style="margin:8px 0 0"><a href="${escapeHtml(
+                help.example.href
+              )}" target="_blank" rel="noopener noreferrer"
+                >${escapeHtml(help.example.link)}</a></p>
+            </div>
+            ${help.footer.map((t) => `<p>${escapeHtml(t)}</p>`).join("")}
+          </div>
+          <footer>
+            <button id="help-ok">Duidelijk</button>
+          </footer>
+        </div>
+      </div>`;
+
+    const close = () => this._closeHelp();
+    root.querySelector("#help-close").addEventListener("click", close);
+    root.querySelector("#help-ok").addEventListener("click", close);
+    const overlay = root.querySelector("#help-overlay");
+    overlay.addEventListener("mousedown", (ev) => {
+      if (ev.target === overlay) close();
+    });
+    // Escape closes the top layer only; the settings dialog underneath
+    // checks for this one before acting on the same key.
+    this._helpEsc = (ev) => {
+      if (ev.key === "Escape") close();
+    };
+    window.addEventListener("keydown", this._helpEsc);
+  }
+
+  _closeHelp() {
+    window.removeEventListener("keydown", this._helpEsc);
+    const root = this.shadowRoot.getElementById("help-root");
+    if (root) root.innerHTML = "";
+  }
+
   /* ── Settings dialog ───────────────────────────────────────────────────── */
 
   _openDialog() {
     this._dialogOpen = true;
     this._renderDialog();
     this._escHandler = (ev) => {
-      if (ev.key === "Escape") this._closeDialog();
+      if (ev.key !== "Escape") return;
+      // The help layer sits on top and has its own Escape. Checking for it
+      // here rather than leaning on stopPropagation: both handlers live on
+      // window, and when window is the event target they fire in
+      // registration order no matter which phase they asked for.
+      const help = this.shadowRoot.getElementById("help-root");
+      if (help && help.innerHTML) return;
+      this._closeDialog();
     };
     window.addEventListener("keydown", this._escHandler);
   }
@@ -1950,6 +2084,45 @@ class NlAlertPanel extends HTMLElement {
             ▶ speelt het geluid af in deze browser, niet op de speakers.</div>
         </div>
         <div class="row">
+          <label class="title">Sirene<button type="button" class="help-btn"
+            id="siren-help" aria-label="Uitleg over sirenes">?</button></label>
+          <div class="control">
+            <div class="grow">
+              <input type="search" class="filter" id="siren-filter"
+                placeholder="Zoeken op naam of entity id…"
+                value="${escapeHtml(this._sirenFilter || "")}">
+              <div class="picklist" id="sirens">
+                ${this._sirenCheckboxes(o.siren_entities || [])}
+              </div>
+            </div>
+          </div>
+          <div class="hint muted">Gaat tegelijk met het alarmgeluid af, en
+            ook als je helemaal geen speakers hebt ingesteld. Nachtmodus
+            verzacht het volume van de speakers, maar niet de sirene — die
+            heeft geen volume om te verzachten.</div>
+        </div>
+        <div class="row">
+          <label class="title" for="siren_follow">Sirene even lang als het alarmgeluid</label>
+          <div class="control"><input type="checkbox" id="siren_follow" ${
+            o.siren_follow_sound !== false ? "checked" : ""
+          }></div>
+          <div class="hint muted">De lengte wordt uit het geluidsbestand
+            gelezen — precies bij wav, geschat bij mp3. Lukt dat niet, dan
+            geldt de vaste tijd hieronder.</div>
+        </div>
+        <div class="row">
+          <label class="title" for="siren_duration">Sirene blijft aan</label>
+          <div class="control">
+            <input type="number" id="siren_duration" min="0" max="600"
+              value="${escapeHtml(o.siren_duration ?? 15)}" ${
+                o.siren_follow_sound !== false ? "disabled" : ""
+              }> <span>sec</span>
+          </div>
+          <div class="hint muted">0 = blijft aan tot je hem zelf uitzet. Zet
+            je hem langer dan de wachttijd hieronder, dan loopt de sirene door
+            de gesproken melding heen.</div>
+        </div>
+        <div class="row">
           <label class="title" for="volume">Volume (${escapeHtml(
             o.volume_pct ?? 70
           )}%)</label>
@@ -2485,6 +2658,62 @@ class NlAlertPanel extends HTMLElement {
       .join("");
   }
 
+  /**
+   * The siren picker. Separate from _checkboxes because this list is the
+   * switch domain — 266 entries on this install — so it needs grouping and
+   * a filter, and anything already chosen stays visible whatever you type.
+   */
+  _sirenCheckboxes(selected) {
+    const chosen = new Set(selected);
+    const items = this._lists.sirens || [];
+    const known = new Set(items.map((i) => i.entity_id));
+    const stale = [...chosen]
+      .filter((v) => !known.has(v))
+      .map((v) => ({ entity_id: v, name: v, domain: "", gone: true }));
+
+    const needle = (this._sirenFilter || "").trim().toLowerCase();
+    const matches = (item) =>
+      chosen.has(item.entity_id) ||
+      !needle ||
+      item.name.toLowerCase().includes(needle) ||
+      item.entity_id.toLowerCase().includes(needle);
+
+    const rows = (list) =>
+      list
+        .map(
+          (item) => `
+        <label ${matches(item) ? "" : "hidden"} data-entity="${escapeHtml(
+          item.entity_id
+        )}">
+          <input type="checkbox" data-group="siren"
+            value="${escapeHtml(item.entity_id)}" ${
+              chosen.has(item.entity_id) ? "checked" : ""
+            }>
+          <span>${escapeHtml(item.name)}
+            <span class="sub">${escapeHtml(
+              item.gone ? "bestaat niet meer" : item.entity_id
+            )}</span></span>
+        </label>`
+        )
+        .join("");
+
+    const sirens = items.filter((i) => i.domain === "siren");
+    const switches = items.filter((i) => i.domain === "switch");
+    const parts = [];
+    if (stale.length) parts.push(rows(stale));
+    parts.push(
+      `<div class="group">Sirenes</div>`,
+      sirens.length
+        ? rows(sirens)
+        : `<div class="empty muted">Geen sirene-entiteiten gevonden. Klik op
+             het vraagteken hierboven.</div>`
+    );
+    if (switches.length) {
+      parts.push(`<div class="group">Schakelaars</div>`, rows(switches));
+    }
+    return parts.join("");
+  }
+
   _wireSettings() {
     const root = this.shadowRoot;
     const on = (id, event, handler) => {
@@ -2617,6 +2846,38 @@ class NlAlertPanel extends HTMLElement {
         this._options.media_players = this._collect("player");
       })
     );
+    root.querySelectorAll('input[data-group="siren"]').forEach((node) =>
+      node.addEventListener("change", () => {
+        this._options.siren_entities = this._collect("siren");
+      })
+    );
+    on("siren_follow", "change", (ev) => {
+      this._options.siren_follow_sound = ev.target.checked;
+      // Flip the one field it governs instead of re-rendering: _renderSettings
+      // rebuilds every <details> from scratch, which collapses the section
+      // the user is standing in.
+      const field = root.getElementById("siren_duration");
+      if (field) field.disabled = ev.target.checked;
+    });
+    on("siren_duration", "change", (ev) => {
+      this._options.siren_duration = Math.max(
+        0,
+        parseInt(ev.target.value, 10) || 0
+      );
+    });
+    on("siren-help", "click", () => this._openHelp("siren"));
+    on("siren-filter", "input", (ev) => {
+      // Filtering in place instead of re-rendering: a re-render would blur
+      // the field and drop what you were halfway through typing.
+      this._sirenFilter = ev.target.value;
+      const needle = this._sirenFilter.trim().toLowerCase();
+      root.querySelectorAll("#sirens label").forEach((label) => {
+        const id = (label.dataset.entity || "").toLowerCase();
+        const text = (label.textContent || "").toLowerCase();
+        const checked = label.querySelector("input").checked;
+        label.hidden = !(checked || !needle || id.includes(needle) || text.includes(needle));
+      });
+    });
     root.querySelectorAll('input[data-group="notify"]').forEach((node) =>
       node.addEventListener("change", () => {
         this._options.notify_services = this._collect("notify");
@@ -2836,6 +3097,9 @@ class NlAlertPanel extends HTMLElement {
       alarm_sound_url: o.alarm_sound_url || "",
       alarm_duration_seconds: o.alarm_duration_seconds ?? 5,
       volume_pct: o.volume_pct ?? 70,
+      siren_entities: o.siren_entities || [],
+      siren_duration: o.siren_duration ?? 15,
+      siren_follow_sound: o.siren_follow_sound !== false,
       night_enabled: o.night_enabled !== false,
       night_start: o.night_start || "22:30",
       night_end: o.night_end || "07:00",

@@ -26,6 +26,10 @@ gewaarschuwde gebied op de kaart.
   vertaald worden via HA's eigen `ai_task` (welke LLM je ook gebruikt).
 - **Eigen alarmgeluiden** — zes meegeleverde tonen, waaronder een slow whoop.
   Geen verwijzingen naar bestanden van andere integraties.
+- **Sirene** — koppel een `siren`- of `switch`-entiteit die tegelijk met het
+  alarmgeluid afgaat, ook als je helemaal geen speakers hebt. Standaard loopt
+  hij precies even lang als het geluid; die lengte wordt uit het bestand
+  gelezen.
 - **Nachtmodus** — zachter volume binnen een tijdvenster, met eventueel een
   ander geluid.
 - **Kritieke notificaties** — iOS critical alert en Android alarm-stream. Voor

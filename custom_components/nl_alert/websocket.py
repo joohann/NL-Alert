@@ -10,6 +10,7 @@ Commands:
   nl_alert/get_config         → merged data+options, validation, HA location
   nl_alert/save_config        → write options (admin only), reloads the entry
   nl_alert/list_media_players → media_player entities
+  nl_alert/list_sirens        → siren.* and switch.* entities
   nl_alert/list_notify_services → notify.* services
   nl_alert/list_tts_services  → tts.* entities + whether chime_tts is present
   nl_alert/list_audio_files   → /local/**.mp3 etc.
@@ -71,6 +72,9 @@ _WRITABLE_KEYS = {
     "alarm_sound_url",
     "alarm_duration_seconds",
     "volume_pct",
+    "siren_entities",
+    "siren_duration",
+    "siren_follow_sound",
     "night_enabled",
     "night_start",
     "night_end",
@@ -264,6 +268,30 @@ def ws_list_media_players(hass: HomeAssistant, connection, msg) -> None:
             }
         )
     items.sort(key=lambda x: x["name"].lower())
+    connection.send_result(msg["id"], items)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "nl_alert/list_sirens"})
+@callback
+def ws_list_sirens(hass: HomeAssistant, connection, msg) -> None:
+    """Entities that can act as a siren.
+
+    siren.* first, then switch.*. The switch domain is included because a
+    siren plugged into a smart plug is how most people have one, but it also
+    means this list runs into the hundreds on a busy install — hence the
+    ``domain`` field, so the panel can group them and put a filter above it.
+    """
+    items = []
+    for domain in ("siren", "switch"):
+        for state in hass.states.async_all(domain):
+            items.append(
+                {
+                    "entity_id": state.entity_id,
+                    "name": state.attributes.get("friendly_name") or state.entity_id,
+                    "domain": domain,
+                }
+            )
+    items.sort(key=lambda x: (x["domain"] != "siren", x["name"].lower()))
     connection.send_result(msg["id"], items)
 
 
@@ -533,6 +561,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_list_media_players)
     websocket_api.async_register_command(hass, ws_list_notify_services)
     websocket_api.async_register_command(hass, ws_list_power_entities)
+    websocket_api.async_register_command(hass, ws_list_sirens)
     websocket_api.async_register_command(hass, ws_list_tts_services)
     websocket_api.async_register_command(hass, ws_list_audio_files)
     websocket_api.async_register_command(hass, ws_test)

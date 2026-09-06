@@ -58,6 +58,7 @@ from homeassistant.components.tts.media_source import generate_media_source_id
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.service import async_get_all_descriptions
 from homeassistant.util import dt as dt_util
@@ -85,12 +86,17 @@ from .const import (
     CONF_NOTIFY_TTS_TARGETS,
     CONF_PREAMBLE,
     CONF_PREAMBLE_TEXT,
+    CONF_SIREN_DURATION,
+    CONF_SIREN_FOLLOW_SOUND,
+    CONF_SIREN_ENTITIES,
     CONF_SPEAK_ENGLISH,
     CONF_TRANSLATE_AGENT,
     CONF_TRANSLATE_MISSING,
     CONF_TTS_ENTITY,
     CONF_TTS_SERVICE,
     CONF_VOLUME_PCT,
+    DEFAULT_SIREN_DURATION,
+    SIREN_FEATURE_DURATION,
     CAST_ASLEEP_STATES,
     CAST_WAKE_TIMEOUT,
     MEDIA_PLAYER_FEATURE_TURN_ON,
@@ -509,6 +515,219 @@ async def _async_play_alarm_sound(
     results.append(
         _step("alarm", "ok", "Alarmgeluid gestart op " + ", ".join(available) + ".")
     )
+    return results
+
+
+def siren_targets(options: dict[str, Any]) -> list[str]:
+    """Entity ids configured as sirens — siren.* and switch.* alike."""
+    return _as_list(options.get(CONF_SIREN_ENTITIES))
+
+
+def siren_duration(options: dict[str, Any]) -> int:
+    """How long the siren runs, in seconds. 0 means: leave it on."""
+    raw = options.get(CONF_SIREN_DURATION)
+    if raw is None or raw == "":
+        return DEFAULT_SIREN_DURATION
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return DEFAULT_SIREN_DURATION
+
+
+# MPEG-1/2 layer III header tables, enough to read a bitrate off frame one.
+_MP3_BITRATES = {
+    # (version bits, layer bits) -> kbps by index
+    (3, 1): [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0],
+    (2, 1): [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0],
+}
+_MP3_RATES = {3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000]}
+
+
+def _wav_seconds(path: str) -> float | None:
+    """Exact length from the WAV header. Reads no audio data."""
+    try:
+        with wave.open(path, "rb") as handle:
+            rate = handle.getframerate()
+            return handle.getnframes() / rate if rate else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _mp3_seconds(path: str) -> float | None:
+    """Length of a constant-bitrate MP3, from the first frame header.
+
+    An estimate, not a measurement: a variable-bitrate file comes out wrong,
+    and there is no stdlib parser that would do better. Accurate enough to
+    time a siren by, and the caller falls back to the fixed number when this
+    returns None.
+    """
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as handle:
+            head = handle.read(65536)
+    except OSError:
+        return None
+
+    start = 0
+    if head[:3] == b"ID3" and len(head) > 10:
+        # Syncsafe integer: seven bits per byte.
+        tag = 0
+        for byte in head[6:10]:
+            tag = (tag << 7) | (byte & 0x7F)
+        start = 10 + tag
+
+    for i in range(start, min(len(head) - 4, start + 8192)):
+        if head[i] != 0xFF or (head[i + 1] & 0xE0) != 0xE0:
+            continue
+        version = (head[i + 1] >> 3) & 0x03
+        layer = (head[i + 1] >> 1) & 0x03
+        bitrates = _MP3_BITRATES.get((version, layer))
+        rates = _MP3_RATES.get(version)
+        if not bitrates or not rates:
+            continue
+        kbps = bitrates[(head[i + 2] >> 4) & 0x0F]
+        rate_index = (head[i + 2] >> 2) & 0x03
+        if not kbps or rate_index == 3:
+            continue
+        return (size - start) * 8 / (kbps * 1000)
+    return None
+
+
+async def async_sound_seconds(hass: HomeAssistant, url: str) -> float | None:
+    """How long the alarm sound runs, or None when that cannot be determined."""
+    path = _local_path(hass, url)
+    if not path:
+        return None
+    lower = path.lower()
+    if lower.endswith(".wav"):
+        reader = _wav_seconds
+    elif lower.endswith(".mp3"):
+        reader = _mp3_seconds
+    else:
+        return None
+    return await hass.async_add_executor_job(reader, path)
+
+
+async def async_effective_siren_seconds(
+    hass: HomeAssistant, options: dict[str, Any]
+) -> tuple[int, bool]:
+    """Seconds the siren should run, and whether that came from the sound.
+
+    effective_alarm_sound rather than the raw option, so night mode's
+    alternative sound is the one measured when night mode is what plays.
+    """
+    if options.get(CONF_SIREN_FOLLOW_SOUND, True):
+        seconds = await async_sound_seconds(hass, effective_alarm_sound(hass, options))
+        if seconds and seconds > 0:
+            return max(1, round(seconds)), True
+    return siren_duration(options), False
+
+
+def _supports_duration(hass: HomeAssistant, entity_id: str) -> bool:
+    """Whether a siren entity can time its own run."""
+    state = hass.states.get(entity_id)
+    try:
+        features = int(state.attributes.get("supported_features") or 0)
+    except (AttributeError, TypeError, ValueError):
+        return False
+    return bool(features & SIREN_FEATURE_DURATION)
+
+
+async def _async_stop_sirens(hass: HomeAssistant, targets: list[str]) -> None:
+    """Turn the sirens back off. Failures are logged, never raised."""
+    for entity in targets:
+        try:
+            await hass.services.async_call(
+                entity.split(".")[0], "turn_off", {"entity_id": entity}, blocking=True
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("NL-Alert: sirene %s uitzetten mislukt: %s", entity, err)
+
+
+async def _async_trigger_sirens(
+    hass: HomeAssistant, options: dict[str, Any]
+) -> list[dict[str, str]]:
+    """Set off the configured sirens and arrange for them to stop again.
+
+    Kept separate from _async_play_alarm_sound on purpose: that one returns
+    early when no media players are set, and a siren with no speakers next to
+    it is a perfectly reasonable setup.
+
+    Night mode does not apply here. Night mode lowers a volume; a siren has
+    no volume to lower, and one that stays polite at 03:00 is a siren that
+    isn't doing its job.
+    """
+    targets = siren_targets(options)
+    # No step at all when the feature is unused — a permanent "skipped: geen
+    # sirene" line in every test result is noise for the people who have none.
+    if not targets:
+        return []
+
+    results: list[dict[str, str]] = []
+    missing = [e for e in targets if hass.states.get(e) is None]
+    if missing:
+        results.append(
+            _step("siren", "error", "Onbekende entiteit(en): " + ", ".join(missing) + ".")
+        )
+    live = [e for e in targets if e not in missing]
+
+    wrong = [e for e in live if e.split(".")[0] not in ("siren", "switch")]
+    if wrong:
+        results.append(
+            _step(
+                "siren",
+                "error",
+                "Alleen siren.* en switch.* kunnen aan, niet: " + ", ".join(wrong) + ".",
+            )
+        )
+        live = [e for e in live if e not in wrong]
+    if not live:
+        return results
+
+    seconds, from_sound = await async_effective_siren_seconds(hass, options)
+    self_timed: list[str] = []
+    started: list[str] = []
+    for entity in live:
+        domain = entity.split(".")[0]
+        data: dict[str, Any] = {"entity_id": entity}
+        if domain == "siren" and seconds > 0 and _supports_duration(hass, entity):
+            # Hand the run time to the device: it then still stops on time
+            # when HA restarts halfway through.
+            data["duration"] = seconds
+            self_timed.append(entity)
+        try:
+            await hass.services.async_call(domain, "turn_on", data, blocking=True)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("NL-Alert: sirene %s aanzetten mislukt", entity)
+            results.append(_step("siren", "error", f"{entity} aanzetten mislukt: {err}"))
+            continue
+        started.append(entity)
+
+    if not started:
+        return results
+
+    ours = [e for e in started if e not in self_timed]
+    if seconds > 0 and ours:
+        async def _stop(_now: Any) -> None:
+            await _async_stop_sirens(hass, ours)
+
+        # Scheduled rather than awaited: waiting here would hold up the
+        # spoken announcement and the push notification behind it.
+        async_call_later(hass, seconds, _stop)
+
+    joined = ", ".join(started)
+    if seconds <= 0:
+        detail = f"Sirene aan, blijft aan tot je hem zelf uitzet: {joined}."
+    elif from_sound:
+        detail = f"Sirene aan voor {seconds} sec (lengte alarmgeluid): {joined}."
+    elif options.get(CONF_SIREN_FOLLOW_SOUND, True):
+        detail = (
+            f"Sirene aan voor {seconds} sec: {joined}. "
+            "Lengte van het alarmgeluid niet te bepalen, vaste tijd gebruikt."
+        )
+    else:
+        detail = f"Sirene aan voor {seconds} sec: {joined}."
+    results.append(_step("siren", "ok", detail))
     return results
 
 
@@ -1301,6 +1520,10 @@ async def async_dispatch_alert(
 
     results: list[dict[str, str]] = []
 
+    # Ahead of the speaker block: a siren is not a media player, and the
+    # block below does nothing at all when no speakers are configured.
+    results.extend(await _async_trigger_sirens(hass, options))
+
     if options.get(CONF_MEDIA_PLAYERS):
         alarm_results = await _async_play_alarm_sound(hass, options)
         results.extend(alarm_results)
@@ -1334,14 +1557,19 @@ async def async_run_test(
     full_message = (message or DEFAULT_TEST_MESSAGE).strip()
 
     if kind == TEST_ALARM:
-        return await _async_play_alarm_sound(hass, options)
+        siren = await _async_trigger_sirens(hass, options)
+        return [*siren, *await _async_play_alarm_sound(hass, options)]
 
     if kind == TEST_ANNOUNCEMENT:
-        results = await _async_play_alarm_sound(hass, options)
-        played = any(r["status"] == "ok" for r in results)
+        siren = await _async_trigger_sirens(hass, options)
+        alarm = await _async_play_alarm_sound(hass, options)
+        # Only the alarm decides the wait: a siren that started is no reason
+        # to delay speech, and a siren that failed is no reason to skip it.
+        played = any(r["status"] == "ok" for r in alarm)
         duration = int(options.get(CONF_ALARM_DURATION) or DEFAULT_ALARM_DURATION)
         if played and duration > 0:
             await asyncio.sleep(duration)
+        results = [*siren, *alarm]
         results.extend(await _async_speak(hass, options, full_message))
         return results
 

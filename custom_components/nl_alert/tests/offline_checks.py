@@ -90,6 +90,7 @@ stub("homeassistant.helpers.storage", Store=object)
 stub(
     "homeassistant.helpers.event",
     async_track_point_in_time=lambda *a, **k: (lambda: None),
+    async_call_later=lambda *a, **k: (lambda: None),
 )
 stub(
     "homeassistant.helpers.network",
@@ -443,6 +444,178 @@ check(
     "off/standby/unavailable/unknown all count as asleep",
     sorted(notifier.CAST_ASLEEP_STATES),
     ["off", "standby", "unavailable", "unknown"],
+)
+
+
+
+# ── Sirens ────────────────────────────────────────────────────────────────────
+# The siren runs beside the alarm sound, not inside it: someone can have a
+# siren and no speakers at all, and _async_play_alarm_sound gives up early
+# when the speaker list is empty.
+
+check("no sirens configured means no targets", notifier.siren_targets({}), [])
+check(
+    "a single entity is accepted as a string",
+    notifier.siren_targets({"siren_entities": "siren.hall"}),
+    ["siren.hall"],
+)
+check(
+    "the default run time is 15 seconds",
+    notifier.siren_duration({}),
+    15,
+)
+check("0 is honoured, not treated as missing", notifier.siren_duration({"siren_duration": 0}), 0)
+check("nonsense falls back to the default", notifier.siren_duration({"siren_duration": "x"}), 15)
+check("a negative value is clamped", notifier.siren_duration({"siren_duration": -5}), 0)
+
+SIREN_HASS = FakeHass(
+    {
+        "siren.timed": FakeState("off", 16),
+        "siren.plain": FakeState("off", 0),
+        "switch.plug": FakeState("off", 0),
+    }
+)
+check(
+    "a siren advertising DURATION times itself",
+    notifier._supports_duration(SIREN_HASS, "siren.timed"),
+    True,
+)
+check(
+    "one without the bit does not",
+    notifier._supports_duration(SIREN_HASS, "siren.plain"),
+    False,
+)
+check(
+    "an unknown entity does not",
+    notifier._supports_duration(SIREN_HASS, "siren.nope"),
+    False,
+)
+
+
+class CallRecorder(FakeHass):
+    """FakeHass that records service calls instead of making them."""
+
+    def __init__(self, mapping):
+        super().__init__(mapping)
+        self.calls = []
+        self.services = self
+
+    async def async_call(self, domain, service, data, blocking=False):
+        self.calls.append((domain, service, dict(data)))
+
+
+rec = CallRecorder(
+    {
+        "siren.timed": FakeState("off", 16),
+        "switch.plug": FakeState("off", 0),
+    }
+)
+steps = asyncio.run(
+    notifier._async_trigger_sirens(
+        rec, {"siren_entities": ["siren.timed", "switch.plug"], "siren_duration": 20}
+    )
+)
+check(
+    "both domains get their own turn_on",
+    [(d, s) for d, s, _ in rec.calls],
+    [("siren", "turn_on"), ("switch", "turn_on")],
+)
+check(
+    "a self-timing siren is handed the duration",
+    rec.calls[0][2],
+    {"entity_id": "siren.timed", "duration": 20},
+)
+check(
+    "a switch is not, it has nowhere to put it",
+    rec.calls[1][2],
+    {"entity_id": "switch.plug"},
+)
+check("one ok step is reported", [s["status"] for s in steps], ["ok"])
+
+
+# Following the alarm sound. The shipped tones run 0.7 to 7.0 seconds, so a
+# fixed 15 would leave the siren howling long after the sound has stopped.
+
+SOUNDS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sounds")
+check(
+    "a wav is measured exactly from its header",
+    round(notifier._wav_seconds(os.path.join(SOUNDS, "attention-tone.wav")), 1),
+    4.0,
+)
+check(
+    "the slow whoop is the long one",
+    round(notifier._wav_seconds(os.path.join(SOUNDS, "slow-whoop.wav")), 1),
+    7.0,
+)
+check("a missing file measures as nothing", notifier._wav_seconds("/nope.wav"), None)
+check(
+    "so does a file that is not a wav at all",
+    notifier._wav_seconds(os.path.join(SOUNDS, "..", "manifest.json")),
+    None,
+)
+
+
+class SoundHass(CallRecorder):
+    """CallRecorder that maps a /nl_alert_sounds URL back onto the real file."""
+
+    def async_add_executor_job(self, func, *args):
+        async def run():
+            return func(*args)
+
+        return run()
+
+
+sound_hass = SoundHass({"siren.plain": FakeState("off", 0)})
+seconds, from_sound = asyncio.run(
+    notifier.async_effective_siren_seconds(
+        sound_hass,
+        {"alarm_sound_url": "/nl_alert_sounds/slow-whoop.wav", "siren_duration": 15},
+    )
+)
+check("following the sound gives the sound's length", (seconds, from_sound), (7, True))
+
+seconds, from_sound = asyncio.run(
+    notifier.async_effective_siren_seconds(
+        sound_hass,
+        {
+            "alarm_sound_url": "/nl_alert_sounds/slow-whoop.wav",
+            "siren_duration": 15,
+            "siren_follow_sound": False,
+        },
+    )
+)
+check("switching it off gives the fixed time", (seconds, from_sound), (15, False))
+
+seconds, from_sound = asyncio.run(
+    notifier.async_effective_siren_seconds(
+        sound_hass,
+        {"alarm_sound_url": "https://example.com/x.wav", "siren_duration": 15},
+    )
+)
+check(
+    "an unmeasurable sound falls back rather than guessing",
+    (seconds, from_sound),
+    (15, False),
+)
+
+rec2 = CallRecorder({})
+steps2 = asyncio.run(
+    notifier._async_trigger_sirens(rec2, {"siren_entities": ["siren.gone"]})
+)
+check("a missing entity is an error, not a crash", steps2[0]["status"], "error")
+check("and nothing was called", rec2.calls, [])
+
+rec3 = CallRecorder({"light.hall": FakeState("off", 0)})
+steps3 = asyncio.run(
+    notifier._async_trigger_sirens(rec3, {"siren_entities": ["light.hall"]})
+)
+check("a light is refused rather than switched on", rec3.calls, [])
+check("and says so", steps3[0]["status"], "error")
+
+check(
+    "an unused siren setting adds no step at all",
+    asyncio.run(notifier._async_trigger_sirens(rec3, {})),
+    [],
 )
 
 
