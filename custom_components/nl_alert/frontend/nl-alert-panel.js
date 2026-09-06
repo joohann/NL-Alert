@@ -1094,7 +1094,17 @@ const STYLE = `
      so every click on the rail resized the window under the pointer, and
      opening a multi-select shoved it again. The panes scroll instead. */
   .dialog.settings { height: min(760px, 100%); }
-  .dialog.settings > .body { flex: 1; min-height: 0; }
+  /* The height has to be handed down the whole chain. .split sits inside
+     #settings, not straight in the body, and a percentage height against an
+     auto-height parent resolves to auto — which is why the rail sometimes
+     stopped short of the footer instead of running the full side. */
+  .dialog.settings > .body {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+  }
+  .dialog.settings > .body > #settings {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+  }
+  .dialog.settings > .body > #settings > .split { flex: 1; min-height: 0; }
   @media (max-height: 620px) { .dialog.settings { height: 100%; } }
   /* height, not just min-height: the rail is a grid item and only
      stretches the full side of the dialog if the grid itself has one. */
