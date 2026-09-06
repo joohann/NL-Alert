@@ -1083,6 +1083,61 @@ const STYLE = `
   }
   .dialog > header h2 { margin: 0; font-size: 18px; }
   .dialog .body { overflow-y: auto; padding: 4px 20px 8px; }
+  /* Rail layout. One section on screen instead of nine accordions in a
+     column: the full form ran to 4307px of scroll, and a section closing
+     above you took your place with it. */
+  /* The rail and the pane do their own scrolling, so the body must not
+     add a third one around them. */
+  .dialog .body.split-body { padding: 0; overflow: hidden; }
+  .split { display: grid; grid-template-columns: 190px 1fr; min-height: 0; }
+  .rail {
+    border-right: 1px solid var(--divider-color, #e0e0e0);
+    padding: 10px 8px; overflow-y: auto;
+    background: var(--secondary-background-color, #fafafa);
+  }
+  .rail button {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    min-height: 44px; padding: 9px 10px; margin-bottom: 2px;
+    text-align: left; font-weight: 400; border-radius: 8px;
+    background: none; color: var(--primary-text-color, #212121);
+  }
+  .rail button:hover { background: var(--card-background-color, #fff); }
+  /* Selected, not shouting: a filled accent here would carry the same
+     weight as the Opslaan button and flatten the hierarchy. A bar and a
+     heavier label are enough, and the bar is not colour alone. */
+  .rail button.on {
+    background: var(--card-background-color, #fff); font-weight: 600;
+    box-shadow: inset 3px 0 0 var(--nl-accent);
+  }
+  .rail button:focus-visible { outline: 2px solid var(--nl-accent); outline-offset: -2px; }
+  .rail-label { flex: 1; }
+  /* Not colour alone: the mark is a glyph, so it survives a palette a
+     reader cannot separate. */
+  .rail-bad {
+    flex: none; width: 18px; height: 18px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; background: #d32f2f; color: #fff;
+  }
+  .pane { padding: 14px 20px 18px; overflow-y: auto; min-width: 0; }
+  .pane:focus { outline: none; }
+  .pane h3 { margin: 0 0 2px; font-size: 17px; }
+  .pane .lead {
+    margin: 0 0 10px; font-size: 13px; color: var(--secondary-text-color, #727272);
+  }
+  .pane > .row:first-of-type { border-top: none; }
+  /* Under 640px two columns do not fit, so the rail lies down and scrolls
+     sideways above the pane. */
+  @media (max-width: 640px) {
+    .split { grid-template-columns: 1fr; }
+    .rail {
+      display: flex; gap: 6px; overflow-x: auto; padding: 8px;
+      border-right: none;
+      border-bottom: 1px solid var(--divider-color, #e0e0e0);
+    }
+    .rail button { width: auto; white-space: nowrap; margin: 0; }
+    .rail button.on { box-shadow: inset 0 -3px 0 var(--nl-accent); }
+    .rail-label { flex: none; }
+  }
   /* Inside the dialog the sections are a list, not a stack of cards: no
      rounding, no shadow, just a hairline between them. Yellow on every
      divider would be seven loud lines; the accent is spent on the one
@@ -1107,6 +1162,7 @@ const STYLE = `
   .dialog .body details.card[open] > summary,
   .dialog .body details.card[open] > .row { padding-left: 12px; }
   .dialog > footer {
+    flex-wrap: wrap;
     display: flex; gap: 12px; align-items: center;
     padding: 12px 20px; border-top: 1px solid var(--divider-color, #e0e0e0);
   }
@@ -1764,19 +1820,13 @@ class NlAlertPanel extends HTMLElement {
             <span class="grow" style="flex:1"></span>
             <button class="icon-btn" id="close" aria-label="Sluiten">✕</button>
           </header>
-          <div class="body">
+          <div class="body split-body">
             <div id="settings"></div>
-            <details class="card">
-              <summary>Testen</summary>
-              <div class="row"><div class="hint muted">Draait tegen de
-                instellingen zoals ze nu op het scherm staan — je hoeft niet
-                eerst op te slaan.</div></div>
-              <div class="row"><div class="tests" id="tests"></div></div>
-            </details>
           </div>
           <footer>
             <button id="save">Opslaan</button>
             <button class="ghost" id="cancel">Sluiten</button>
+            <button class="ghost" id="goto-tests">Testen…</button>
             <span class="toast" id="toast"></span>
             <span class="grow"></span>
             <majikan-donate inline lang="nl" accent="--nl-accent"></majikan-donate>
@@ -1797,8 +1847,13 @@ class NlAlertPanel extends HTMLElement {
       if (ev.target === overlay) this._closeDialog();
     });
     root.querySelector("#save").addEventListener("click", () => this._save());
+    root
+      .querySelector("#goto-tests")
+      .addEventListener("click", () => this._showSection("testen"));
 
     this._renderSettings();
+    this._wireSettings();
+    this._wirePickers();
     this._renderTests();
   }
 
@@ -2341,45 +2396,25 @@ class NlAlertPanel extends HTMLElement {
     );
   }
 
+
   /**
-   * Which settings section a validated field belongs to. Used to auto-open
-   * that section: with everything collapsed, "Dit werkt nu niet" would
-   * otherwise tell you to fix something you cannot see.
+   * The settings sections, in rail order.
+   *
+   * `fields` is what makes a rail item flag itself when validation fails.
+   * The old accordions solved that by springing open; with one pane visible
+   * at a time an error could otherwise sit unseen behind another section.
    */
-  _sectionOpen(fields) {
-    return this._validation.some(
-      (p) => p.status === "error" && fields.includes(p.field)
-    )
-      ? "open"
-      : "";
-  }
-
-  _renderSettings() {
-    const el = this.shadowRoot.getElementById("settings");
-    if (!el) return;
-    const o = this._options;
-    const openLocation = this._sectionOpen([
-      "latitude",
-      "longitude",
-      "scan_interval_minutes",
-    ]);
-    const openSpeech = this._sectionOpen([
-      "media_players",
-      "alarm_sound_url",
-      "tts_service",
-      "tts_entity",
-      "translate_agent",
-    ]);
-    const openNight = this._sectionOpen(["night_alarm_sound_url"]);
-    const openNotify = this._sectionOpen(["notify_services"]);
-    const openCast = this._sectionOpen(["cast_entities", "cast_entity"]);
+  _sections() {
+    return [
+      {
+        id: "locatie",
+        label: "Locatie",
+        title: "Locatie &amp; ophalen",
+        lead: "Waar je woont, en hoe vaak er bij NL-Alert gekeken wordt.",
+        fields: ["latitude", "longitude", "scan_interval_minutes"],
+        rows: (o) => {
     const useHome = o.use_home_location !== false;
-
-    const soundOptions = this._soundOptions(o.alarm_sound_url);
-
-    el.innerHTML = `
-      <details class="card" ${openLocation}>
-        <summary>Locatie &amp; ophalen</summary>
+          return `
         <div class="row">
           <label class="title" for="use_home">Thuislocatie van Home Assistant gebruiken</label>
           <div class="control"><input type="checkbox" id="use_home" ${
@@ -2425,11 +2460,18 @@ class NlAlertPanel extends HTMLElement {
           <div class="hint muted">Een alert telt als "jouw gebied" zodra de
             rand van het gewaarschuwde gebied binnen deze straal ligt.
             0 = alleen als je adres écht in het gebied valt.</div>
-        </div>
-      </details>
-
-      <details class="card" ${openSpeech}>
-        <summary>Alarm &amp; spraak</summary>
+        </div>`;
+        },
+      },
+      {
+        id: "alarm",
+        label: "Alarm",
+        title: "Alarm",
+        lead: "Wat er in huis afgaat zodra een NL-Alert jouw gebied raakt.",
+        fields: ["media_players", "alarm_sound_url"],
+        rows: (o) => {
+    const soundOptions = this._soundOptions(o.alarm_sound_url);
+          return `
         <div class="row">
           <label class="title">Speakers</label>
           <div class="control">
@@ -2502,7 +2544,17 @@ class NlAlertPanel extends HTMLElement {
             <input type="number" id="alarm_duration" min="0" max="60"
               value="${escapeHtml(o.alarm_duration_seconds ?? 5)}"> <span>sec</span>
           </div>
-        </div>
+        </div>`;
+        },
+      },
+      {
+        id: "spraak",
+        label: "Spraak",
+        title: "Spraak",
+        lead: "Hoe de tekst wordt voorgelezen, en in welke talen.",
+        fields: ["tts_service", "tts_entity", "translate_agent"],
+        rows: (o) => {
+          return `
         <div class="row">
           <label class="title" for="tts_service">Manier van uitspreken</label>
           <div class="control">
@@ -2599,11 +2651,17 @@ class NlAlertPanel extends HTMLElement {
           </div>
           <div class="hint muted">Een AI Task-entiteit (Instellingen → Spraak).
             Zonder vertaler blijft zo'n alert alleen Nederlands.</div>
-        </div>
-      </details>
-
-      <details class="card" ${openNight}>
-        <summary>Nachtmodus</summary>
+        </div>`;
+        },
+      },
+      {
+        id: "nacht",
+        label: "Nachtmodus",
+        title: "Nachtmodus",
+        lead: "Zachter binnen een tijdvenster, zodat je er ’s nachts niet tegen het plafond van zit.",
+        fields: ["night_alarm_sound_url"],
+        rows: (o) => {
+          return `
         <div class="row">
           <label class="title" for="night_enabled">Zachter tussen deze tijden</label>
           <div class="control"><input type="checkbox" id="night_enabled" ${
@@ -2643,11 +2701,17 @@ class NlAlertPanel extends HTMLElement {
               ${this._soundOptions(o.night_alarm_sound_url)}
             </select>
           </div>
-        </div>
-      </details>
-
-      <details class="card" ${openNotify}>
-        <summary>Notificaties</summary>
+        </div>`;
+        },
+      },
+      {
+        id: "notificaties",
+        label: "Notificaties",
+        title: "Notificaties",
+        lead: "Wat er naar je telefoon gaat, en hoe hard dat aankomt.",
+        fields: ["notify_services"],
+        rows: (o) => {
+          return `
         <div class="row">
           <label class="title" for="notify_critical">Kritieke melding</label>
           <div class="control"><input type="checkbox" id="notify_critical" ${
@@ -2676,53 +2740,17 @@ class NlAlertPanel extends HTMLElement {
             negeren — veel Samsung-telefoons doen dat. De app spreekt het
             bericht dan uit via de alarm-stream. Per toestel, want het
             verandert wát de ontvanger hoort.</div>
-        </div>
-      </details>
-
-      <details class="card">
-        <summary>Maandelijkse test (luchtalarm)</summary>
-        <div class="row">
-          <label class="title" for="siren_test_enabled">Eerste maandag 12:00 laten klinken</label>
-          <div class="control"><input type="checkbox" id="siren_test_enabled" ${
-            o.siren_test_enabled ? "checked" : ""
-          }></div>
-          <div class="hint muted">Zoals het echte luchtalarm: eerste maandag
-            van de maand om 12:00:00, en overgeslagen op feestdagen.</div>
-        </div>
-        <div class="row">
-          <label class="title" for="siren_test_lead">Waarschuwing vooraf</label>
-          <div class="control">
-            <input type="number" id="siren_test_lead" min="0" max="300"
-              value="${escapeHtml(o.siren_test_lead ?? 30)}"> <span>sec</span>
-          </div>
-          <div class="hint muted">Notificatie zoveel seconden vóór het geluid.
-            0 = geen waarschuwing.</div>
-        </div>
-        <div class="row">
-          <label class="title">Feestdagen</label>
-          <div class="control">
-            <span class="${this._holidayEntity ? "" : "warn"}">${
-              this._holidayEntity
-                ? escapeHtml(this._holidayEntity)
-                : "geen feestdagenkalender gevonden"
-            }</span>
-          </div>
-          <div class="hint muted">${
-            this._holidayEntity
-              ? "Op deze dagen blijft het stil."
-              : "Vereist: voeg de <b>Holiday</b>-integratie toe (Instellingen → Apparaten &amp; diensten → Integratie toevoegen → Holiday, land Nederland). Zonder kalender wordt de test elke maand overgeslagen."
-          }</div>
-        </div>
-        <div class="row">
-          <label class="title">Eerstvolgende</label>
-          <div class="control"><span>${escapeHtml(
-            formatTime(this._nextSirenTest, this._locale()) || "—"
-          )}</span></div>
-        </div>
-      </details>
-
-      <details class="card" ${openCast}>
-        <summary>Naar de TV</summary>
+        </div>`;
+        },
+      },
+      {
+        id: "tv",
+        label: "TV",
+        title: "Naar de TV",
+        lead: "Het gewaarschuwde gebied op het scherm zetten.",
+        fields: ["cast_entities", "cast_entity"],
+        rows: (o) => {
+          return `
         <div class="row">
           <label class="title" for="cast_enabled">Bij een alert in jouw gebied casten</label>
           <div class="control"><input type="checkbox" id="cast_enabled" ${
@@ -2803,11 +2831,65 @@ class NlAlertPanel extends HTMLElement {
           <div class="hint results" id="cast-result">${this._renderResults(
             "cast"
           )}</div>
+        </div>`;
+        },
+      },
+      {
+        id: "luchtalarm",
+        label: "Luchtalarmtest",
+        title: "Maandelijkse test (luchtalarm)",
+        lead: "De sirenetest op de eerste maandag van de maand, om 12:00.",
+        fields: [],
+        rows: (o) => {
+          return `
+        <div class="row">
+          <label class="title" for="siren_test_enabled">Eerste maandag 12:00 laten klinken</label>
+          <div class="control"><input type="checkbox" id="siren_test_enabled" ${
+            o.siren_test_enabled ? "checked" : ""
+          }></div>
+          <div class="hint muted">Zoals het echte luchtalarm: eerste maandag
+            van de maand om 12:00:00, en overgeslagen op feestdagen.</div>
         </div>
-      </details>
-
-      <details class="card">
-        <summary>Paneel</summary>
+        <div class="row">
+          <label class="title" for="siren_test_lead">Waarschuwing vooraf</label>
+          <div class="control">
+            <input type="number" id="siren_test_lead" min="0" max="300"
+              value="${escapeHtml(o.siren_test_lead ?? 30)}"> <span>sec</span>
+          </div>
+          <div class="hint muted">Notificatie zoveel seconden vóór het geluid.
+            0 = geen waarschuwing.</div>
+        </div>
+        <div class="row">
+          <label class="title">Feestdagen</label>
+          <div class="control">
+            <span class="${this._holidayEntity ? "" : "warn"}">${
+              this._holidayEntity
+                ? escapeHtml(this._holidayEntity)
+                : "geen feestdagenkalender gevonden"
+            }</span>
+          </div>
+          <div class="hint muted">${
+            this._holidayEntity
+              ? "Op deze dagen blijft het stil."
+              : "Vereist: voeg de <b>Holiday</b>-integratie toe (Instellingen → Apparaten &amp; diensten → Integratie toevoegen → Holiday, land Nederland). Zonder kalender wordt de test elke maand overgeslagen."
+          }</div>
+        </div>
+        <div class="row">
+          <label class="title">Eerstvolgende</label>
+          <div class="control"><span>${escapeHtml(
+            formatTime(this._nextSirenTest, this._locale()) || "—"
+          )}</span></div>
+        </div>`;
+        },
+      },
+      {
+        id: "weergave",
+        label: "Weergave",
+        title: "Weergave",
+        lead: "Het paneel in de zijbalk en het kaartmateriaal.",
+        fields: [],
+        rows: (o) => {
+          return `
         <div class="row">
           <label class="title" for="show_in_sidebar">NL-Alert in de zijbalk tonen</label>
           <div class="control"><input type="checkbox" id="show_in_sidebar" ${
@@ -2816,10 +2898,6 @@ class NlAlertPanel extends HTMLElement {
           <div class="hint muted">Uit? Het paneel blijft bereikbaar via
             <code>/nl-alert</code>.</div>
         </div>
-      </details>
-
-      <details class="card">
-        <summary>Kaart</summary>
         <div class="row">
           <label class="title" for="tile_preset">Kaartlaag</label>
           <div class="control">
@@ -2868,11 +2946,26 @@ class NlAlertPanel extends HTMLElement {
           </div>
           <div class="hint muted">Verschijnt rechtsonder op de kaart. Vrijwel
             elke aanbieder verplicht dit.</div>
-        </div>
-      </details>
-
-      <details class="card">
-        <summary>Over NL-Alert</summary>
+        </div>`;
+        },
+      },
+      {
+        id: "testen",
+        label: "Testen",
+        title: "Testen",
+        lead:
+          "Draait tegen de instellingen zoals ze nu op het scherm staan \u2014 " +
+          "je hoeft niet eerst op te slaan.",
+        fields: [],
+        rows: () => `<div class="tests" id="tests"></div>`,
+      },
+      {
+        id: "over",
+        label: "Over NL-Alert",
+        title: "Over NL-Alert",
+        lead: "",
+        fields: [],
+        rows: (o) => `
         ${WELCOME.warnings
           .map(
             (item) => `<div class="row"><div class="hint">
@@ -2904,12 +2997,79 @@ class NlAlertPanel extends HTMLElement {
           <div class="control">
             <button class="ghost" id="show-welcome">Opnieuw tonen</button>
           </div>
-        </div>
-      </details>`;
+        </div>`,
+      },
+    ];
+  }
 
+  _sectionHasError(section) {
+    return (section.fields || []).some((field) => this._fieldError(field));
+  }
+
+  _renderSettings() {
+    const el = this.shadowRoot.getElementById("settings");
+    if (!el) return;
+    const o = this._options;
+    const sections = this._sections();
+
+    // A section carrying a failed field wins the opening pane, so a
+    // validation error is never hidden behind another one.
+    if (!this._section || !sections.some((s) => s.id === this._section)) {
+      const broken = sections.find((s) => this._sectionHasError(s));
+      this._section = (broken || sections[0]).id;
+    }
+    const active = sections.find((s) => s.id === this._section) || sections[0];
+
+    el.innerHTML = `
+      <div class="split">
+        <nav class="rail" aria-label="Onderdelen">
+          ${sections
+            .map(
+              (s) => `
+            <button type="button" data-sec="${s.id}"
+              class="${s.id === active.id ? "on" : ""}"
+              aria-current="${s.id === active.id ? "page" : "false"}">
+              <span class="rail-label">${escapeHtml(s.label)}</span>
+              ${
+                this._sectionHasError(s)
+                  ? `<span class="rail-bad" aria-label="bevat een fout">!</span>`
+                  : ""
+              }
+            </button>`
+            )
+            .join("")}
+        </nav>
+        <section class="pane" aria-label="${escapeHtml(active.title)}"
+                 tabindex="-1">
+          <h3>${active.title}</h3>
+          ${active.lead ? `<p class="lead">${escapeHtml(active.lead)}</p>` : ""}
+          ${active.rows(o)}
+        </section>
+      </div>`;
+
+    el.querySelectorAll(".rail button").forEach((node) =>
+      node.addEventListener("click", () => this._showSection(node.dataset.sec))
+    );
+  }
+
+  _showSection(id) {
+    this._section = id;
+    this._renderSettings();
     this._wireSettings();
     this._wirePickers();
+    if (id === "testen") this._renderTests();
+    // Focus moves to the pane, not the first field: a screen reader should
+    // hear which section it landed in before it hears a label.
+    const pane = this.shadowRoot.querySelector(".pane");
+    if (pane) {
+      // preventScroll: a plain focus() scrolls the nearest scrollable
+      // ancestor even when its overflow is hidden, which on a phone pushed
+      // the rail clean off the top of the dialog.
+      pane.focus({ preventScroll: true });
+      pane.scrollTop = 0;
+    }
   }
+
 
   /**
    * <optgroup>s for the alarm-sound picker: NL-Alert's own sounds first, the
