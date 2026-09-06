@@ -1089,7 +1089,19 @@ const STYLE = `
   /* The rail and the pane do their own scrolling, so the body must not
      add a third one around them. */
   .dialog .body.split-body { padding: 0; overflow: hidden; }
-  .split { display: grid; grid-template-columns: 190px 1fr; min-height: 0; }
+  /* One height for every section. Without this the dialog took its size
+     from whichever pane was showing — Weergave is 480px, Naar de TV is 836 —
+     so every click on the rail resized the window under the pointer, and
+     opening a multi-select shoved it again. The panes scroll instead. */
+  .dialog.settings { height: min(760px, 100%); }
+  .dialog.settings > .body { flex: 1; min-height: 0; }
+  @media (max-height: 620px) { .dialog.settings { height: 100%; } }
+  /* height, not just min-height: the rail is a grid item and only
+     stretches the full side of the dialog if the grid itself has one. */
+  .split {
+    display: grid; grid-template-columns: 190px 1fr;
+    height: 100%; min-height: 0;
+  }
   .rail {
     border-right: 1px solid var(--divider-color, #e0e0e0);
     padding: 10px 8px; overflow-y: auto;
@@ -1128,7 +1140,7 @@ const STYLE = `
   /* Under 640px two columns do not fit, so the rail lies down and scrolls
      sideways above the pane. */
   @media (max-width: 640px) {
-    .split { grid-template-columns: 1fr; }
+    .split { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
     .rail {
       display: flex; gap: 6px; overflow-x: auto; padding: 8px;
       border-right: none;
@@ -1802,6 +1814,9 @@ class NlAlertPanel extends HTMLElement {
   }
 
   _closeDialog() {
+    // Anything still sitting in the debounce goes out now, or a setting
+    // changed a second before closing would quietly never be written.
+    this._flushSave();
     this._dialogOpen = false;
     window.removeEventListener("keydown", this._escHandler);
     const root = this.shadowRoot.getElementById("dialog-root");
@@ -1813,7 +1828,7 @@ class NlAlertPanel extends HTMLElement {
     if (!root) return;
     root.innerHTML = `
       <div class="overlay" id="overlay">
-        <div class="dialog" role="dialog" aria-modal="true"
+        <div class="dialog settings" role="dialog" aria-modal="true"
              aria-label="NL-Alert instellingen">
           <header>
             <h2>Instellingen</h2>
@@ -1824,9 +1839,6 @@ class NlAlertPanel extends HTMLElement {
             <div id="settings"></div>
           </div>
           <footer>
-            <button id="save">Opslaan</button>
-            <button class="ghost" id="cancel">Sluiten</button>
-            <button class="ghost" id="goto-tests">Testen…</button>
             <span class="toast" id="toast"></span>
             <span class="grow"></span>
             <majikan-donate inline lang="nl" accent="--nl-accent"></majikan-donate>
@@ -1837,19 +1849,18 @@ class NlAlertPanel extends HTMLElement {
     root.querySelector("#close").addEventListener("click", () =>
       this._closeDialog()
     );
-    root.querySelector("#cancel").addEventListener("click", () =>
-      this._closeDialog()
-    );
     // Click-outside closes, but only when the click starts on the backdrop —
     // otherwise dragging the volume slider past the dialog edge closes it.
     const overlay = root.querySelector("#overlay");
     overlay.addEventListener("mousedown", (ev) => {
       if (ev.target === overlay) this._closeDialog();
     });
-    root.querySelector("#save").addEventListener("click", () => this._save());
-    root
-      .querySelector("#goto-tests")
-      .addEventListener("click", () => this._showSection("testen"));
+    // One listener on the container instead of one per field: every control
+    // in here mutates this._options in its own handler, and the multi-select
+    // dispatches a composed change event that reaches this too.
+    const settings = root.querySelector("#settings");
+    settings.addEventListener("change", () => this._queueSave());
+    settings.addEventListener("input", () => this._queueSave());
 
     this._renderSettings();
     this._wireSettings();
@@ -2933,9 +2944,9 @@ class NlAlertPanel extends HTMLElement {
           </div>
           <div class="hint muted">Leeg = de standaardkaart. Gebruik
             <code>{z}</code>, <code>{x}</code> en <code>{y}</code> als
-            plaatshouders. CARTO en OpenStreetMap weigeren inmiddels verzoeken
-            zonder sleutel of van apps; heb je een sleutel bij een aanbieder,
-            plak dan hier hun template.</div>
+            plaatshouders. CARTO zet zonder sleutel "API KEY REQUIRED" in
+            elke tegel; heb je bij een aanbieder een sleutel, plak dan hier
+            hun template.</div>
         </div>
         <div class="row">
           <label class="title" for="tile_attribution">Bronvermelding</label>
@@ -3573,34 +3584,75 @@ class NlAlertPanel extends HTMLElement {
     };
   }
 
+  /**
+   * Autosave, debounced.
+   *
+   * Every write calls async_update_entry, and the update listener reloads
+   * the whole config entry — coordinator, platforms, the lot. That is fine
+   * once, wasteful per keystroke, hence the wait.
+   */
+  _queueSave() {
+    clearTimeout(this._saveTimer);
+    this._showToast("Opslaan…", "");
+    this._saveTimer = setTimeout(() => this._save(), 900);
+  }
+
+  _flushSave() {
+    if (!this._saveTimer) return;
+    clearTimeout(this._saveTimer);
+    this._saveTimer = null;
+    this._save();
+  }
+
   async _save() {
-    const button = this.shadowRoot.getElementById("save");
-    button.disabled = true;
+    this._saveTimer = null;
+    const payload = JSON.stringify(this._writableOptions());
+    if (payload === this._savedPayload) return;
     try {
       const res = await this._hass.callWS({
         type: "nl_alert/save_config",
-        options: this._writableOptions(),
+        options: JSON.parse(payload),
       });
-      this._options = res.options || this._options;
+      this._savedPayload = payload;
+      // Deliberately NOT taking res.options back: the server echoes what it
+      // received, and anything typed during the round trip would be undone
+      // by it. The local object is the truth while the form is open.
+      const before = this._brokenFields();
       this._validation = res.validation || [];
       this._renderProblems();
-      this._renderSettings();
-      this._showToast("Opgeslagen.", "ok");
+      // Re-rendering the form on every save would blow away focus mid-word,
+      // so it only happens when the set of failing fields actually moved.
+      if (this._brokenFields() !== before) {
+        this._renderSettings();
+        this._wireSettings();
+        this._wirePickers();
+      }
+      this._showToast("Opgeslagen", "ok");
     } catch (err) {
-      this._showToast(`Opslaan mislukt: ${err.message || err}`, "error");
+      // No auto-clear on failure: a save that silently did not happen is
+      // worse than a message that overstays.
+      this._showToast(`Opslaan mislukt: ${err.message || err}`, "error", 0);
     }
-    button.disabled = false;
   }
 
-  _showToast(text, kind) {
+  _brokenFields() {
+    return this._validation
+      .filter((p) => p.status === "error")
+      .map((p) => p.field)
+      .sort()
+      .join(",");
+  }
+
+  _showToast(text, kind, clearAfter = 4000) {
     const el = this.shadowRoot.getElementById("toast");
     if (!el) return;
     el.textContent = text;
     el.className = `toast ${kind || ""}`;
     clearTimeout(this._toast);
+    if (!clearAfter) return;
     this._toast = setTimeout(() => {
       el.textContent = "";
-    }, 6000);
+    }, clearAfter);
   }
 }
 
