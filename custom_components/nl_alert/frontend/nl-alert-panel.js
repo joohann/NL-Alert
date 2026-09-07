@@ -472,7 +472,12 @@ class NlMultiSelect extends HTMLElement {
              ${searchable ? "" : 'tabindex="-1"'}
              ${!searchable && activeId ? `aria-activedescendant="${activeId}"` : ""}
              aria-label="${escapeHtml(this.dataset.label || "Keuzelijst")}">
-          ${rows || `<div class="ms-empty muted">Niets gevonden.</div>`}
+          ${
+            rows ||
+            `<div class="ms-empty muted">${
+              this.dataset.empty || "Niets gevonden."
+            }</div>`
+          }
         </div>
         <div class="ms-foot">
           <button type="button" class="link" data-act="clear" ${
@@ -1143,6 +1148,22 @@ const STYLE = `
   .pane { padding: 14px 20px 18px; overflow-y: auto; min-width: 0; }
   .pane:focus { outline: none; }
   .pane h3 { margin: 0 0 2px; font-size: 17px; }
+  .pane { position: relative; }
+  /* The sentence that used to sit under every row. Twenty-eight of them
+     turned the form into a wall of grey; behind a "?" they are there when
+     you want them and gone when you don't. */
+  .tip {
+    position: absolute; z-index: 5;
+    width: min(340px, calc(100% - 24px)); box-sizing: border-box;
+    padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.45;
+    background: var(--primary-text-color, #212121);
+    color: var(--card-background-color, #fff);
+    box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  }
+  .tip code {
+    background: rgba(255,255,255,.16); border-radius: 4px; padding: 0 3px;
+  }
+  .title .help-btn { vertical-align: middle; }
   .pane .lead {
     margin: 0 0 10px; font-size: 13px; color: var(--secondary-text-color, #727272);
   }
@@ -1236,6 +1257,7 @@ class NlAlertPanel extends HTMLElement {
     this._loaded = false;
     this._options = {};
     this._validation = [];
+    this._listErrors = new Set();
     this._lists = {
       players: [],
       notify: [],
@@ -1435,8 +1457,15 @@ class NlAlertPanel extends HTMLElement {
 
   async _safeWS(type, fallback) {
     try {
-      return await this._hass.callWS({ type });
+      const res = await this._hass.callWS({ type });
+      this._listErrors.delete(type);
+      return res;
     } catch (err) {
+      // Remembered, not just logged. A command the running backend does not
+      // have yet — new frontend, integration not reloaded — used to end up
+      // as an empty picker with no way to tell that apart from "you own no
+      // such devices".
+      this._listErrors.add(type);
       console.warn(`nl-alert: ${type} failed`, err); // eslint-disable-line no-console
       return fallback;
     }
@@ -1812,6 +1841,10 @@ class NlAlertPanel extends HTMLElement {
     this._renderDialog();
     this._escHandler = (ev) => {
       if (ev.key !== "Escape") return;
+      if (this._openTip) {
+        this._hideTip(this._openTip, true);
+        return;
+      }
       // The help layer sits on top and has its own Escape. Checking for it
       // here rather than leaning on stopPropagation: both handlers live on
       // window, and when window is the event target they fire in
@@ -2859,7 +2892,9 @@ class NlAlertPanel extends HTMLElement {
         id: "luchtalarm",
         label: "Luchtalarmtest",
         title: "Maandelijkse test (luchtalarm)",
-        lead: "De sirenetest op de eerste maandag van de maand, om 12:00.",
+        lead:
+          "De sirenetest op de eerste maandag van de maand, om 12:00. " +
+          "Een gekoppelde sirene gaat hier altijd in mee.",
         fields: [],
         rows: (o) => {
           return `
@@ -3068,9 +3103,131 @@ class NlAlertPanel extends HTMLElement {
         </section>
       </div>`;
 
+    this._applyHints(el.querySelector(".pane"));
     el.querySelectorAll(".rail button").forEach((node) =>
       node.addEventListener("click", () => this._showSection(node.dataset.sec))
     );
+  }
+
+  /**
+   * Turns the explanation under every row into a "?" beside its label.
+   *
+   * Done as a pass over the rendered DOM rather than in the templates: there
+   * are 28 of these, and the markup stays readable with the sentence sitting
+   * next to the field it explains.
+   *
+   * A row that already carries its own "?" (the siren, which opens a longer
+   * piece with a link) keeps that one and loses the inline sentence — two
+   * question marks on one row explain nothing.
+   */
+  _applyHints(pane) {
+    this._tips = new Map();
+    this._tipPinned = null;
+    this._openTip = null;
+    let n = 0;
+    pane.querySelectorAll(".row").forEach((row) => {
+      const hint = row.querySelector(":scope > .hint");
+      if (!hint) return;
+      const existing = row.querySelector(".help-btn");
+      if (existing) {
+        hint.remove();
+        return;
+      }
+      const id = `tip${++n}`;
+      this._tips.set(id, hint.innerHTML);
+      hint.remove();
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "help-btn";
+      button.dataset.tip = id;
+      button.textContent = "?";
+      button.setAttribute("aria-label", "Uitleg");
+      const label = row.querySelector(".title") || row.firstElementChild;
+      (label || row).appendChild(button);
+    });
+
+    const tip = document.createElement("div");
+    tip.className = "tip";
+    tip.id = "tip-bubble";
+    tip.setAttribute("role", "tooltip");
+    tip.hidden = true;
+    pane.appendChild(tip);
+
+    pane.querySelectorAll(".help-btn[data-tip]").forEach((button) => {
+      // Hover and focus show it; a click pins it open. The two are tracked
+      // apart on purpose — when they shared one flag, hovering opened the
+      // bubble and the click that followed read as "close it again", so a
+      // tap never showed anything at all.
+      button.addEventListener("pointerenter", () => this._showTip(button));
+      button.addEventListener("focus", () => this._showTip(button));
+      button.addEventListener("pointerleave", () => this._hideTip(button));
+      button.addEventListener("blur", () => this._hideTip(button));
+      button.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        if (this._tipPinned === button) {
+          this._tipPinned = null;
+          this._hideTip(button, true);
+        } else {
+          this._tipPinned = button;
+          this._showTip(button);
+        }
+      });
+    });
+    // Dismissible, and it stays put while the pointer is on it — the two
+    // things WCAG 1.4.13 asks of content shown on hover.
+    tip.addEventListener("pointerenter", () => clearTimeout(this._tipTimer));
+    tip.addEventListener("pointerleave", () => this._hideTip());
+    pane.addEventListener("scroll", () => this._hideTip(null, true), {
+      passive: true,
+    });
+  }
+
+  _showTip(button) {
+    const pane = this.shadowRoot.querySelector(".pane");
+    const tip = this.shadowRoot.getElementById("tip-bubble");
+    if (!pane || !tip) return;
+    clearTimeout(this._tipTimer);
+    tip.innerHTML = this._tips.get(button.dataset.tip) || "";
+    tip.hidden = false;
+    this._openTip = button;
+    button.setAttribute("aria-describedby", "tip-bubble");
+
+    const b = button.getBoundingClientRect();
+    const p = pane.getBoundingClientRect();
+    // Width comes from CSS, not from a measurement here: reading
+    // clientWidth mid-layout once produced a 16px bubble, one word per line.
+    const width = tip.offsetWidth;
+
+    let left = b.left - p.left + pane.scrollLeft - 8;
+    left = Math.max(8, Math.min(left, pane.clientWidth - width - 8));
+    tip.style.left = `${left}px`;
+
+    // Placed below by default, above when there is not enough room —
+    // the pane is the scroll container, so anything past its bottom edge
+    // would simply be cut off.
+    const below = b.bottom - p.top + pane.scrollTop + 6;
+    const above = b.top - p.top + pane.scrollTop - tip.offsetHeight - 6;
+    // Below by default; above only when it fits there, since the pane is the
+    // scroll container and anything past its edge is simply cut off.
+    const overflows =
+      below + tip.offsetHeight > pane.scrollTop + pane.clientHeight - 8;
+    tip.style.top = `${overflows && above >= pane.scrollTop ? above : below}px`;
+  }
+
+  _hideTip(button, force = false) {
+    const tip = this.shadowRoot.getElementById("tip-bubble");
+    if (!tip) return;
+    if (!force && this._tipPinned) return;
+    if (force) this._tipPinned = null;
+    // A short grace period so the pointer can travel from the "?" onto the
+    // bubble without it vanishing on the way.
+    clearTimeout(this._tipTimer);
+    this._tipTimer = setTimeout(() => {
+      tip.hidden = true;
+      if (this._openTip) this._openTip.removeAttribute("aria-describedby");
+      this._openTip = null;
+    }, 120);
+    if (button) button.removeAttribute("aria-describedby");
   }
 
   _showSection(id) {
@@ -3162,6 +3319,7 @@ class NlAlertPanel extends HTMLElement {
       },
       {
         id: "sirens",
+        source: "nl_alert/list_sirens",
         options: (this._lists.sirens || []).map((x) => ({
           value: x.entity_id,
           label: x.name,
@@ -3209,6 +3367,11 @@ class NlAlertPanel extends HTMLElement {
     for (const picker of this._pickers()) {
       const node = this.shadowRoot.getElementById(picker.id);
       if (!node) continue;
+      node.dataset.empty =
+        picker.source && this._listErrors.has(picker.source)
+          ? "De lijst kon niet worden opgehaald. Dit onderdeel is nieuwer " +
+            "dan de draaiende integratie — herstart Home Assistant."
+          : "Niets gevonden.";
       const known = new Set(picker.options.map((x) => x.value));
       // A stored entity that has since disappeared still gets a row, ticked,
       // so it can be seen and switched off instead of vanishing silently.

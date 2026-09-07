@@ -41,7 +41,11 @@ from .const import (
     SIREN_TEST_NOTIFY_TITLE,
     SIREN_TEST_WARNING,
 )
-from .notifier import _async_notify, _async_play_alarm_sound
+from .notifier import (
+    _async_notify,
+    _async_play_alarm_sound,
+    _async_trigger_sirens,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -203,7 +207,13 @@ class SirenTestScheduler:
                     fired=False, detail=f"Overgeslagen: {reason}."
                 )
         else:
-            results = await _async_play_alarm_sound(self._hass, self._options)
+            # The siren goes off with it, always. This is the monthly test of
+            # the air-raid sirens; a run of it that leaves the one siren in
+            # the house silent is not a test of anything. Deliberately not an
+            # option — there is no sensible reason to want it off here while
+            # having it on for a real alert.
+            results = await _async_trigger_sirens(self._hass, self._options)
+            results += await _async_play_alarm_sound(self._hass, self._options)
             if coordinator is not None:
                 await coordinator.history.async_load()
                 await coordinator.history.async_record_siren_test(
