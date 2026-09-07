@@ -618,6 +618,17 @@ check(
     [],
 )
 
+# The monthly air-raid test sounds the siren too. Not an option: a test of
+# the sirens that leaves the one siren in the house quiet tests nothing.
+check(
+    "the monthly test fires the sirens as well as the speakers",
+    "_async_trigger_sirens" in open(
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "siren_test.py")
+    ).read(),
+    True,
+)
+
 
 # ── Notification payloads ─────────────────────────────────────────────────────
 
