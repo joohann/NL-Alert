@@ -3128,6 +3128,11 @@ class NlAlertPanel extends HTMLElement {
     pane.querySelectorAll(".row").forEach((row) => {
       const hint = row.querySelector(":scope > .hint");
       if (!hint) return;
+      // A row with no control is prose, not an explanation of a field —
+      // "Over NL-Alert" carries the two statements that this is unofficial
+      // and not to be relied on, and those are the last text in here that
+      // should need a hover to find.
+      if (!row.querySelector(".control")) return;
       const existing = row.querySelector(".help-btn");
       if (existing) {
         hint.remove();
