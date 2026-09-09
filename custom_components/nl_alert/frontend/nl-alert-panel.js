@@ -1526,7 +1526,7 @@ class NlAlertPanel extends HTMLElement {
         <summary>Recente NL-Alerts</summary>
         <div class="row"><div id="history" class="grow"></div></div>
       </details>
-      <majikan-donate lang="nl" accent="--nl-accent"></majikan-donate>
+      <majikan-donate lang="nl" accent="--nl-accent" contact="https://majikan.nl/contact-me"></majikan-donate>
       <div id="dialog-root"></div>
       <div id="busy-root"></div>
       <div id="welcome-root"></div>
@@ -1752,7 +1752,7 @@ class NlAlertPanel extends HTMLElement {
           <footer>
             <button id="welcome-ok">${escapeHtml(w.cta)}</button>
             <span class="grow"></span>
-            <majikan-donate inline lang="nl" accent="--nl-accent"></majikan-donate>
+            <majikan-donate inline lang="nl" accent="--nl-accent" contact="https://majikan.nl/contact-me"></majikan-donate>
           </footer>
         </div>
       </div>`;
@@ -1884,7 +1884,7 @@ class NlAlertPanel extends HTMLElement {
           <footer>
             <span class="toast" id="toast"></span>
             <span class="grow"></span>
-            <majikan-donate inline lang="nl" accent="--nl-accent"></majikan-donate>
+            <majikan-donate inline lang="nl" accent="--nl-accent" contact="https://majikan.nl/contact-me"></majikan-donate>
           </footer>
         </div>
       </div>`;

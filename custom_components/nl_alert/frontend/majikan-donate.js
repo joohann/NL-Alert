@@ -1,7 +1,7 @@
 /**
  * <majikan-donate> — herbruikbare "Steun de ontwikkelaar"-knop met
  * bevestigingspopup, voor alle Majikan-integraties (NL-Alert, Nida,
- * Aqua Chihiros, ...).
+ * Chihiros Plus, ...).
  *
  * Eén bron van waarheid: elke integratie kopieert dit ene bestand naar zijn
  * eigen frontend/-map (HACS levert per integratie zijn eigen frontend) en
@@ -13,15 +13,16 @@
  *   <majikan-donate inline accent="--nl-accent"></majikan-donate>   // inline
  *
  * Attributen (optioneel):
- *   accent  CSS-variabelenaam voor de accentkleur van die integratie
- *           (bijv. "--nl-accent", "--nida-gold"). Valt terug op --primary-color.
- *   label   Knoptekst.  Standaard: "Steun de ontwikkelaar".
- *   made    Wat er onder Majikan valt.  Standaard: "diverse open-source projecten".
- *   url     PayPal-donatielink.  Standaard: de hosted Donate-knop hieronder.
+ *   accent   CSS-variabelenaam voor de accentkleur van die integratie
+ *            (bijv. "--nl-accent", "--chihiros-accent"). Valt terug op --primary-color.
+ *   label    Knoptekst.  Standaard: "Support the developer".
+ *   made     Wat er onder Majikan valt.  Standaard: "several open-source projects".
+ *   url      PayPal-donatielink.  Standaard: de hosted Donate-knop hieronder.
+ *   contact  Optionele contact-/formulier-URL. Toont een extra "Contact"-link
+ *            in de bevestigingspopup (opent in een nieuw tabblad).
  *
  * De popup rendert in document.body (portal) met inline-stijlen, zodat een
- * transform-voorouder in het paneel de fixed-overlay niet kan breken — die
- * valkuil staat expliciet in Nida's panel beschreven.
+ * transform-voorouder in het paneel de fixed-overlay niet kan breken.
  */
 
 const DEFAULT_URL =
@@ -39,6 +40,7 @@ const STRINGS = {
       `<strong>Majikan</strong> is the developer's nickname behind ${made}.`,
     go: "Continue",
     cancel: "Cancel",
+    contact: "Contact me",
   },
   nl: {
     label: "Steun de ontwikkelaar",
@@ -51,6 +53,7 @@ const STRINGS = {
       `${made} worden ontwikkeld.`,
     go: "Doorgaan",
     cancel: "Annuleren",
+    contact: "Neem contact op",
   },
 };
 
@@ -93,6 +96,7 @@ class MajikanDonate extends HTMLElement {
     this._label = this.getAttribute("label") || this._t.label;
     this._made = this.getAttribute("made") || this._t.made;
     this._url = this.getAttribute("url") || DEFAULT_URL;
+    this._contact = this.getAttribute("contact") || "";
 
     const accent = `var(${this._accentVar}, var(--primary-color, #ffe500))`;
     const root = this.attachShadow({ mode: "open" });
@@ -170,6 +174,16 @@ class MajikanDonate extends HTMLElement {
             font-size:14px;cursor:pointer;padding:8px 16px;border-radius:8px;
             background:transparent;color:${accent};border:1px solid ${accent};"
             >${this._t.cancel}</button>
+          ${this._contact ? `<span style="flex:1"></span>
+          <a href="${this._contact}" target="_blank" rel="noopener"
+             style="font:inherit;font-weight:500;font-size:14px;text-decoration:none;
+             display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
+             border-radius:8px;background:transparent;color:${accent};
+             border:1px solid ${accent};"><svg viewBox="0 0 24 24" width="15"
+             height="15" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+             ><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"
+             /></svg>${this._t.contact}</a>` : ""}
         </div>
       </div>`;
     document.body.appendChild(ov);
