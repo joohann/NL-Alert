@@ -1368,6 +1368,10 @@ class NlAlertPanel extends HTMLElement {
   /* ── Data ──────────────────────────────────────────────────────────────── */
 
   async _bootstrap() {
+    // Parse the ?v=<version> off our own module URL up front, so the donate
+    // button in the shell footer can show it on the very first render.
+    this._version =
+      new URLSearchParams(new URL(import.meta.url).search).get("v") || "";
     this._renderShell();
     this._mountTopbar();
     // Inlined rather than <img src> so the SVG scales with the header and
@@ -1381,7 +1385,6 @@ class NlAlertPanel extends HTMLElement {
       // cache-busted by panel.py, the assets it loads were not, so a fixed
       // logo would stay broken on a long-lived tab.
       const version = new URL(import.meta.url).search;
-      this._version = new URLSearchParams(version).get("v") || "";
       const load = async (name) => {
         try {
           const response = await fetch(new URL(name + version, import.meta.url).href);
@@ -1526,7 +1529,7 @@ class NlAlertPanel extends HTMLElement {
         <summary>Recente NL-Alerts</summary>
         <div class="row"><div id="history" class="grow"></div></div>
       </details>
-      <majikan-donate lang="nl" accent="--nl-accent" contact="https://majikan.nl/contact-me"></majikan-donate>
+      <majikan-donate lang="nl" accent="--nl-accent" contact="https://majikan.nl/contact-me" version="${this._version}"></majikan-donate>
       <div id="dialog-root"></div>
       <div id="busy-root"></div>
       <div id="welcome-root"></div>
@@ -1752,7 +1755,7 @@ class NlAlertPanel extends HTMLElement {
           <footer>
             <button id="welcome-ok">${escapeHtml(w.cta)}</button>
             <span class="grow"></span>
-            <majikan-donate inline lang="nl" accent="--nl-accent" contact="https://majikan.nl/contact-me"></majikan-donate>
+            <majikan-donate inline lang="nl" accent="--nl-accent" contact="https://majikan.nl/contact-me" version="${this._version}"></majikan-donate>
           </footer>
         </div>
       </div>`;
@@ -1884,7 +1887,7 @@ class NlAlertPanel extends HTMLElement {
           <footer>
             <span class="toast" id="toast"></span>
             <span class="grow"></span>
-            <majikan-donate inline lang="nl" accent="--nl-accent" contact="https://majikan.nl/contact-me"></majikan-donate>
+            <majikan-donate inline lang="nl" accent="--nl-accent" contact="https://majikan.nl/contact-me" version="${this._version}"></majikan-donate>
           </footer>
         </div>
       </div>`;
