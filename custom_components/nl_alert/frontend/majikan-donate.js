@@ -97,6 +97,7 @@ class MajikanDonate extends HTMLElement {
     this._made = this.getAttribute("made") || this._t.made;
     this._url = this.getAttribute("url") || DEFAULT_URL;
     this._contact = this.getAttribute("contact") || "";
+    this._version = this.getAttribute("version") || "";
 
     const accent = `var(${this._accentVar}, var(--primary-color, #ffe500))`;
     const root = this.attachShadow({ mode: "open" });
@@ -114,10 +115,13 @@ class MajikanDonate extends HTMLElement {
           border: 1px solid ${accent};
         }
         button svg { width: 16px; height: 16px; }
+        .ver { text-align: center; margin-top: 6px; font-size: 11px;
+          color: var(--secondary-text-color, #9a9a9a); font-family: monospace; }
       </style>
       <div class="bar">
         <button class="trigger" title="${this._label}">${HEART} ${this._label}</button>
-      </div>`;
+      </div>
+      ${this._version ? `<div class="ver">v${this._version}</div>` : ""}`;
 
     root
       .querySelector(".trigger")
