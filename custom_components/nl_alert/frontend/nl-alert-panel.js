@@ -108,10 +108,13 @@ const HELP = {
   },
 };
 
+/** Beta features the panel knows how to switch. Mirrors BETA_FEATURES in const.py. */
+const BETA_FEATURES = ["tv"];
+
 const WELCOME = {
   title: "NL-Alert in Home Assistant",
   intro:
-    "Deze integratie haalt actieve NL-Alert berichten op en geeft ze door aan je speakers, telefoon en TV.",
+    "Deze integratie haalt actieve NL-Alert berichten op en geeft ze door aan je speakers, telefoon en TV (beta).",
   warnings: [
     {
       head: "Geen officiële integratie.",
@@ -2476,7 +2479,7 @@ class NlAlertPanel extends HTMLElement {
    * The old accordions solved that by springing open; with one pane visible
    * at a time an error could otherwise sit unseen behind another section.
    */
-  _sections() {
+  _allSections() {
     return [
       {
         id: "locatie",
@@ -2817,6 +2820,7 @@ class NlAlertPanel extends HTMLElement {
       },
       {
         id: "tv",
+        beta: "tv",
         label: "TV",
         title: "Naar de TV",
         lead: "Het gewaarschuwde gebied op het scherm zetten.",
@@ -3024,6 +3028,25 @@ class NlAlertPanel extends HTMLElement {
         },
       },
       {
+        id: "beta",
+        label: "Beta",
+        title: "Beta-functies",
+        lead:
+          "Onderdelen die werken, maar nog te weinig in het echt gedraaid " +
+          "hebben om voor iedereen aan te staan.",
+        fields: [],
+        rows: () => `
+        <div class="row">
+          <label class="title" for="beta_tv">Naar de TV</label>
+          <div class="control"><input type="checkbox" id="beta_tv" ${
+            this._betaOn("tv") ? "checked" : ""
+          }></div>
+          <div class="hint muted">Het gewaarschuwde gebied op een
+            Chromecast-TV zetten. Uit: het onderdeel TV verdwijnt uit het menu
+            en er wordt niets gecast, ook niet als dat eerder was ingesteld.</div>
+        </div>`,
+      },
+      {
         id: "testen",
         label: "Testen",
         title: "Testen",
@@ -3074,6 +3097,28 @@ class NlAlertPanel extends HTMLElement {
         </div>`,
       },
     ];
+  }
+
+  /** The rail, minus anything behind a beta switch that is off. */
+  _sections() {
+    return this._allSections().filter((s) => !s.beta || this._betaOn(s.beta));
+  }
+
+  /**
+   * Mirrors beta_enabled() in notifier.py, including its rule for installs
+   * from before beta features existed: casting that was already switched on
+   * stays on and visible instead of vanishing in an update.
+   */
+  _betaOn(feature) {
+    const chosen = this._options.beta_features;
+    if (chosen == null) {
+      return feature === "tv" && this._options.cast_enabled === true;
+    }
+    return Array.isArray(chosen) && chosen.includes(feature);
+  }
+
+  _betaList() {
+    return BETA_FEATURES.filter((feature) => this._betaOn(feature));
   }
 
   _sectionHasError(section) {
@@ -3549,6 +3594,17 @@ class NlAlertPanel extends HTMLElement {
       );
     });
     on("siren-help", "click", () => this._openHelp("siren"));
+    on("beta_tv", "change", (ev) => {
+      const chosen = new Set(this._betaList());
+      if (ev.target.checked) chosen.add("tv");
+      else chosen.delete("tv");
+      this._options.beta_features = [...chosen];
+      // The rail itself changes, so this one does re-render. _section still
+      // says "beta", so the user stays where they are.
+      this._renderSettings();
+      this._wireSettings();
+      this._wirePickers();
+    });
   }
 
 
@@ -3674,7 +3730,7 @@ class NlAlertPanel extends HTMLElement {
       { kind: "notify", label: "Notificatie" },
       { kind: "cast", label: "Naar TV casten" },
       { kind: "full", label: "Volledige alert" },
-    ];
+    ].filter((t) => t.kind !== "cast" || this._betaOn("tv"));
     el.innerHTML = tests
       .map(
         (t) => `
@@ -3732,6 +3788,7 @@ class NlAlertPanel extends HTMLElement {
   _writableOptions() {
     const o = this._options;
     return {
+      beta_features: this._betaList(),
       use_home_location: o.use_home_location !== false,
       latitude: o.latitude,
       longitude: o.longitude,
