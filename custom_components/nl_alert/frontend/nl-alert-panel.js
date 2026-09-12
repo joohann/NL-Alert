@@ -1144,6 +1144,13 @@ const STYLE = `
   }
   .rail button:focus-visible { outline: 2px solid var(--nl-accent); outline-offset: -2px; }
   .rail-label { flex: 1; }
+  /* Marks a rail item that only exists because a beta switch is on. Line
+     height 0 so the superscript cannot make that one row taller than the
+     rest of the rail. */
+  .beta-tag {
+    margin-left: 3px; font-size: 10px; font-weight: 600; line-height: 0;
+    letter-spacing: .02em; color: var(--secondary-text-color, #727272);
+  }
   /* Not colour alone: the mark is a glyph, so it survives a palette a
      reader cannot separate. */
   .rail-bad {
@@ -3148,7 +3155,9 @@ class NlAlertPanel extends HTMLElement {
             <button type="button" data-sec="${s.id}"
               class="${s.id === active.id ? "on" : ""}"
               aria-current="${s.id === active.id ? "page" : "false"}">
-              <span class="rail-label">${escapeHtml(s.label)}</span>
+              <span class="rail-label">${escapeHtml(s.label)}${
+                s.beta ? `<sup class="beta-tag">beta</sup>` : ""
+              }</span>
               ${
                 this._sectionHasError(s)
                   ? `<span class="rail-bad" aria-label="bevat een fout">!</span>`
