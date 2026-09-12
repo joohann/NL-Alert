@@ -661,10 +661,13 @@ const STYLE = `
      below, and header's align-items:center puts the wordmark on the same
      line as the buttons instead of 8px below them. */
   .logo { color: var(--nl-wordmark); }
-  .logo svg { height: 48px; width: auto; display: block; }
+  /* Hoger dan de oude 48px: in deze lockup staat het woordmerk onder
+     het merk en krijgt het maar een kwart van de hoogte, waar de brede
+     wordmark er bijna alles van kreeg. */
+  .logo svg { height: 64px; width: auto; display: block; }
   /* The mobile top bar already shows the wordmark, so shrink the big header
      logo on narrow screens to avoid a jumbo duplicate. */
-  @media (max-width: 600px) { .logo svg { height: 32px; } }
+  @media (max-width: 600px) { .logo svg { height: 44px; } }
 
   .busy {
     display: flex; flex-direction: column; align-items: center; gap: 14px;
@@ -1282,6 +1285,8 @@ class NlAlertPanel extends HTMLElement {
     this._nextSirenTest = "";
     this._logoLight = "";
     this._logoDark = "";
+    this._logoHorLight = "";
+    this._logoHorDark = "";
     this._version = "";
     this._tileTemplate = DEFAULT_TILE_URL;
     this._attribution = DEFAULT_ATTRIBUTION;
@@ -1393,9 +1398,19 @@ class NlAlertPanel extends HTMLElement {
           return "";
         }
       };
-      [this._logoLight, this._logoDark] = await Promise.all([
+      // Twee lockups, elk waar hij past. De brede wordmark blijft in de
+      // mobiele topbar en het welkomstscherm staan: daar is de hoogte krap
+      // en wint een groot leesbaar "nl-alert" het van een net blok.
+      [
+        this._logoLight,
+        this._logoDark,
+        this._logoHorLight,
+        this._logoHorDark,
+      ] = await Promise.all([
         load("nl-alert-logo.svg"),
         load("nl-alert-logo-diapositief.svg"),
+        load("nl-alert-logo-hor.svg"),
+        load("nl-alert-logo-hor-diapositief.svg"),
       ]);
       this._mountTopbar();  // re-mount so the wordmark replaces the text fallback
     }
@@ -1921,8 +1936,8 @@ class NlAlertPanel extends HTMLElement {
     const local = (this._alerts.local || []).length;
     el.innerHTML = `
       <div class="grow logo" aria-label="NL-Alert">${
-        (this.hasAttribute("dark") ? this._logoDark : this._logoLight) ||
-        this._logoLight ||
+        (this.hasAttribute("dark") ? this._logoHorDark : this._logoHorLight) ||
+        this._logoHorLight ||
         "<h1>NL-Alert</h1>"
       }</div>
       <div class="chips">
