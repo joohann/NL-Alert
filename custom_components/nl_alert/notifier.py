@@ -67,6 +67,8 @@ from .const import (
     CONF_ALARM_DURATION,
     CONF_ALARM_SOUND_URL,
     CONF_ANNOUNCE_LANGUAGE,
+    BETA_TV,
+    CONF_BETA_FEATURES,
     CONF_CAST_AT_NIGHT,
     CONF_CAST_DASHBOARD,
     CONF_CAST_ENABLED,
@@ -1213,8 +1215,24 @@ def cast_targets(options: dict[str, Any]) -> list[str]:
     return targets
 
 
+def beta_enabled(options: dict[str, Any], feature: str) -> bool:
+    """Is a beta feature switched on?
+
+    Unset means the install predates beta features. Someone who already had
+    casting on keeps it: moving TV behind a beta switch must not silently
+    stop a TV that worked the day before the update.
+    """
+    chosen = options.get(CONF_BETA_FEATURES)
+    if chosen is None:
+        return feature == BETA_TV and bool(options.get(CONF_CAST_ENABLED))
+    return feature in _as_list(chosen)
+
+
 def should_cast(hass: HomeAssistant, options: dict[str, Any]) -> tuple[bool, str]:
     """Should this alert go to the TV(s)? Returns (yes, reason-when-no)."""
+    # First, so hiding the TV section can never leave casting running unseen.
+    if not beta_enabled(options, BETA_TV):
+        return False, "TV staat uit onder Beta."
     if not options.get(CONF_CAST_ENABLED):
         return False, "Casten naar de TV staat uit."
     if not cast_targets(options):

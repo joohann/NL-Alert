@@ -407,7 +407,7 @@ check(
 )
 check(
     "the skip reason explains itself",
-    notifier.should_cast(None, {**CAST, "cast_enabled": False})[1],
+    notifier.should_cast(None, {**CAST, "beta_features": ["tv"], "cast_enabled": False})[1],
     "Casten naar de TV staat uit.",
 )
 
@@ -627,6 +627,30 @@ check(
                      "siren_test.py")
     ).read(),
     True,
+)
+
+# ── Beta features ─────────────────────────────────────────────────────────────
+# TV sits behind a beta switch. An install from before that switch existed
+# must keep casting if it was casting; hiding a section may never quietly
+# turn off something that worked the day before.
+
+check("beta unset, cast was on: TV stays on", notifier.beta_enabled({"cast_enabled": True}, "tv"), True)
+check("beta unset, cast was off: TV is off", notifier.beta_enabled({}, "tv"), False)
+check(
+    "an explicit empty choice switches TV off even with cast_enabled",
+    notifier.beta_enabled({"beta_features": [], "cast_enabled": True}, "tv"),
+    False,
+)
+check("an explicit tv choice switches it on", notifier.beta_enabled({"beta_features": ["tv"]}, "tv"), True)
+check(
+    "with the TV beta off nothing is cast, whatever the cast settings say",
+    notifier.should_cast(None, {**CAST, "beta_features": []}),
+    (False, "TV staat uit onder Beta."),
+)
+check(
+    "with it on the cast settings decide as before",
+    notifier.should_cast(None, {**CAST, "beta_features": ["tv"], "cast_enabled": False})[1],
+    "Casten naar de TV staat uit.",
 )
 
 

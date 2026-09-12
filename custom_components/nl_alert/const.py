@@ -121,6 +121,15 @@ DEFAULT_NIGHT_VOLUME_PCT = 40
 DEFAULT_NIGHT_START = "22:30"
 DEFAULT_NIGHT_END = "07:00"
 
+# Beta-functies. Onderdelen die werken maar nog niet bezonken genoeg zijn om
+# iedereen ongevraagd voor te schotelen. Casten naar de TV is er zo een: dat
+# vraagt HTTPS, een Chromecast en een dashboard dat je zelf moet bouwen, en
+# het faalt op manieren die de rest van de integratie niet kent.
+#
+# Standaard uit. Wie het casten al had ingericht houdt de sectie zichtbaar,
+# anders zou een bestaande opstelling ineens onbereikbaar zijn.
+CONF_BETA_ENABLED = "beta_enabled"   # bool, default False
+
 # Notification
 CONF_NOTIFY_SERVICES = "notify_services"      # list[str]
 # Critical delivery. An NL-Alert that arrives silently because the phone is
@@ -140,6 +149,13 @@ SCOPE_ELSEWHERE = "elsewhere"  # somewhere else in the country
 # so this points at a dashboard/view the user builds — with nl-alert-card on
 # it, ideally. Off by default: it needs a Chromecast-capable device and an
 # HTTPS-reachable instance, neither of which is a given.
+# Beta features. Opt-in for parts that work but have not had enough real
+# mileage to be on for everyone. A list of ids rather than one key per
+# feature, so the next beta is a string and not a new option.
+CONF_BETA_FEATURES = "beta_features"          # list[str]; unset = never chosen
+BETA_TV = "tv"
+BETA_FEATURES = (BETA_TV,)
+
 CONF_CAST_ENABLED = "cast_enabled"            # bool, default False
 CONF_CAST_ENTITIES = "cast_entities"          # list[str] of cast media_players
 CONF_CAST_ENTITY = "cast_entity"              # legacy single value, still read
