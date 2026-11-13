@@ -85,6 +85,7 @@ stub("homeassistant.components.tts", async_get_media_source_audio=None).__path__
 stub("homeassistant.components.tts.media_source", generate_media_source_id=None)
 stub("homeassistant.helpers").__path__ = []
 stub("homeassistant.helpers.entity_registry", async_get=lambda hass: None)
+stub("homeassistant.helpers.device_registry", async_get=lambda hass: None)
 stub("homeassistant.helpers.service", async_get_all_descriptions=_no_descriptions)
 stub("homeassistant.helpers.storage", Store=object)
 stub(
@@ -499,6 +500,9 @@ class CallRecorder(FakeHass):
         super().__init__(mapping)
         self.calls = []
         self.services = self
+
+    def has_service(self, domain, service):
+        return False
 
     async def async_call(self, domain, service, data, blocking=False):
         self.calls.append((domain, service, dict(data)))

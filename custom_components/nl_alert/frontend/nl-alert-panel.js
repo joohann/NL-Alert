@@ -639,6 +639,28 @@ const STYLE = `
     --nl-accent: #111111;
     --nl-on-accent: #ffffff;
     --nl-wordmark: #111111;
+
+    /* Liquid Glass. The brand pair is unchanged; these only add the ground
+       the glass floats on and the frosted surfaces themselves. Glass is used
+       on floating things only (header, map controls, dialogs, the open
+       dropdown, the selected rail item); cards and reading surfaces stay
+       solid, because text behind frosted glass reads worse. */
+    --nl-ground: #eef0f3;
+    --nl-wash-1: rgba(255, 229, 0, .26);
+    --nl-wash-2: rgba(118, 142, 190, .20);
+    --nl-wash-3: rgba(255, 170, 90, .12);
+    --nl-surface: rgba(255, 255, 255, .90);
+    --nl-surface-2: rgba(255, 255, 255, .66);
+    --nl-border: rgba(16, 18, 22, .10);
+    --nl-border-strong: rgba(16, 18, 22, .16);
+    --nl-glass: rgba(255, 255, 255, .60);
+    --nl-glass-strong: rgba(255, 255, 255, .76);
+    --nl-glass-border: rgba(255, 255, 255, .70);
+    --nl-sheen: inset 0 1px 0 rgba(255, 255, 255, .85);
+    --nl-shadow-1: 0 1px 2px rgba(16, 18, 22, .06);
+    --nl-shadow-2: 0 10px 30px rgba(16, 18, 22, .12);
+    --nl-shadow-3: 0 24px 64px rgba(16, 18, 22, .22);
+    --nl-blur: blur(20px) saturate(180%);
   }
   :host([dark]) {
     --nl-accent: #ffe500;
@@ -646,15 +668,45 @@ const STYLE = `
     /* "Diapositief": the wordmark inverts to white, the yellow mark inside
        the logo keeps its own fill and needs no variant file. */
     --nl-wordmark: #ffffff;
+
+    --nl-ground: #0d0f12;
+    --nl-wash-1: rgba(255, 229, 0, .12);
+    --nl-wash-2: rgba(60, 104, 200, .22);
+    --nl-wash-3: rgba(170, 90, 255, .10);
+    --nl-surface: rgba(255, 255, 255, .05);
+    --nl-surface-2: rgba(255, 255, 255, .08);
+    --nl-border: rgba(255, 255, 255, .11);
+    --nl-border-strong: rgba(255, 255, 255, .18);
+    --nl-glass: rgba(255, 255, 255, .07);
+    --nl-glass-strong: rgba(28, 31, 36, .72);
+    --nl-glass-border: rgba(255, 255, 255, .14);
+    --nl-sheen: inset 0 1px 0 rgba(255, 255, 255, .13);
+    --nl-shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
+    --nl-shadow-2: 0 10px 30px rgba(0, 0, 0, .50);
+    --nl-shadow-3: 0 24px 64px rgba(0, 0, 0, .62);
   }
   :host {
     display: block;
+    position: relative;
+    isolation: isolate;
     padding: 16px;
     max-width: 1100px;
     margin: 0 auto;
     box-sizing: border-box;
+    background: var(--nl-ground);
     color: var(--primary-text-color, #212121);
     font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif);
+  }
+  /* The ambient wash. Glass needs something coloured behind it to refract;
+     without this the frosted surfaces read as plain grey panes with a rim.
+     z-index:-1 keeps it behind every card and the header but above the solid
+     ground, so backdrop-filter samples ground + wash. */
+  :host::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(60% 55% at 4% -8%, var(--nl-wash-1), transparent 60%),
+      radial-gradient(52% 48% at 100% 26%, var(--nl-wash-2), transparent 62%),
+      radial-gradient(70% 60% at 50% 118%, var(--nl-wash-3), transparent 58%);
   }
   h1 { font-size: 24px; margin: 0; font-weight: 500; }
   h2 { font-size: 16px; margin: 0 0 12px; font-weight: 500; }
@@ -696,6 +748,11 @@ const STYLE = `
   header {
     display: flex; align-items: center; gap: 16px;
     flex-wrap: wrap; margin-bottom: 16px;
+    padding: 8px 14px; border-radius: 16px;
+    background: var(--nl-glass);
+    -webkit-backdrop-filter: var(--nl-blur); backdrop-filter: var(--nl-blur);
+    border: 1px solid var(--nl-glass-border);
+    box-shadow: var(--nl-sheen), var(--nl-shadow-1);
   }
   header .grow { flex: 1; }
 
@@ -703,7 +760,7 @@ const STYLE = `
   .chip {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 4px 12px; border-radius: 16px; font-size: 13px;
-    background: var(--secondary-background-color, #e0e0e0);
+    background: var(--nl-surface-2); border: 1px solid var(--nl-border);
   }
   .chip.hot { background: #ffe500; color: #111; font-weight: 500; }
   .chip .dot {
@@ -711,9 +768,10 @@ const STYLE = `
   }
 
   .card {
-    background: var(--card-background-color, #fff);
-    border-radius: var(--ha-card-border-radius, 12px);
-    box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0,0,0,.12));
+    background: var(--nl-surface);
+    border: 1px solid var(--nl-border);
+    border-radius: 16px;
+    box-shadow: var(--nl-shadow-1);
     padding: 16px; margin-bottom: 16px;
   }
   details.card { padding: 0; }
@@ -821,9 +879,11 @@ const STYLE = `
     border-bottom-left-radius: 0; border-bottom-right-radius: 0;
   }
   .ms-panel {
-    border: 1px solid var(--nl-accent); border-top: none;
-    border-radius: 0 0 8px 8px; padding: 8px;
-    background: var(--card-background-color, #fff);
+    border: 1px solid var(--nl-glass-border); border-top: none;
+    border-radius: 0 0 10px 10px; padding: 8px;
+    background: var(--nl-glass-strong);
+    -webkit-backdrop-filter: var(--nl-blur); backdrop-filter: var(--nl-blur);
+    box-shadow: var(--nl-shadow-2);
   }
   .ms-search {
     width: 100%; box-sizing: border-box; margin-bottom: 6px;
@@ -873,6 +933,21 @@ const STYLE = `
   .ms.invalid .ms-trigger { border-color: #d32f2f; }
   @media (prefers-reduced-motion: reduce) {
     .ms-caret { transition: none; }
+  }
+  /* A viewer who asked the OS for less transparency gets solid surfaces:
+     the glass tokens fall back to the ground, and backdrop blur is dropped
+     everywhere so nothing stays half see-through. */
+  @media (prefers-reduced-transparency: reduce) {
+    :host {
+      --nl-glass: var(--nl-ground);
+      --nl-glass-strong: var(--nl-ground);
+      --nl-surface: var(--nl-ground);
+      --nl-surface-2: var(--nl-ground);
+    }
+    header, .dialog, .map-zoom, .attribution, .ms-panel,
+    .rail button.on, .overlay, .tip {
+      -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+    }
   }
   /* Small round "?" next to a label. Sized off the label so it never drags
      the row height around. */
@@ -1003,19 +1078,29 @@ const STYLE = `
     position: absolute; right: 8px; top: 8px;
     display: flex; flex-direction: column; gap: 4px;
   }
-  .map-zoom button {
-    width: 30px; height: 30px; padding: 0; font-size: 18px; line-height: 1;
-    border-radius: 6px; background: var(--card-background-color, #fff);
-    color: var(--primary-text-color, #212121);
-    border: 1px solid var(--divider-color, #e0e0e0);
-    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  .map-zoom {
+    border-radius: 9px; overflow: hidden;
+    background: var(--nl-glass-strong);
+    -webkit-backdrop-filter: blur(16px) saturate(170%);
+    backdrop-filter: blur(16px) saturate(170%);
+    border: 1px solid var(--nl-glass-border);
+    box-shadow: var(--nl-sheen), var(--nl-shadow-1);
+    gap: 0;
   }
+  .map-zoom button {
+    width: 32px; height: 32px; padding: 0; font-size: 18px; line-height: 1;
+    background: none; color: var(--primary-text-color, #212121); border: 0;
+  }
+  .map-zoom button + button { border-top: 1px solid var(--nl-border); }
   .map-zoom button:hover { background: var(--nl-accent); color: var(--nl-on-accent); }
   .map-zoom button:disabled { opacity: .4; }
   .attribution {
-    position: absolute; right: 6px; bottom: 4px; font-size: 10px;
+    position: absolute; right: 6px; bottom: 6px; font-size: 10px;
     color: var(--secondary-text-color, #666);
-    background: rgba(255,255,255,.6); padding: 0 4px; border-radius: 3px;
+    background: var(--nl-glass-strong);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border: 1px solid var(--nl-glass-border);
+    padding: 1px 6px; border-radius: 999px;
   }
   .alert-list {
     display: flex; flex-direction: column; gap: 8px;
@@ -1083,11 +1168,15 @@ const STYLE = `
   .dialog {
     width: min(760px, 100%); max-height: 100%;
     display: flex; flex-direction: column;
-    background: var(--card-background-color, #fff);
-    border-radius: 16px; overflow: hidden;
-    box-shadow: 0 24px 64px rgba(0,0,0,.35);
+    background: var(--nl-glass-strong);
+    -webkit-backdrop-filter: blur(30px) saturate(190%);
+    backdrop-filter: blur(30px) saturate(190%);
+    border: 1px solid var(--nl-glass-border);
+    border-radius: 20px; overflow: hidden;
+    box-shadow: var(--nl-sheen), var(--nl-shadow-3);
     animation: rise .18s ease-out;
   }
+  .dialog > header, .dialog > footer { background: var(--nl-surface-2); }
   .dialog > header {
     display: flex; align-items: center; gap: 12px; margin: 0;
     padding: 16px 20px; border-bottom: 1px solid var(--divider-color, #e0e0e0);
@@ -1124,9 +1213,9 @@ const STYLE = `
     height: 100%; min-height: 0;
   }
   .rail {
-    border-right: 1px solid var(--divider-color, #e0e0e0);
+    border-right: 1px solid var(--nl-border);
     padding: 10px 8px; overflow-y: auto;
-    background: var(--secondary-background-color, #fafafa);
+    background: linear-gradient(180deg, rgba(127,127,127,.05), transparent 38%);
   }
   .rail button {
     display: flex; align-items: center; gap: 8px; width: 100%;
@@ -1134,13 +1223,17 @@ const STYLE = `
     text-align: left; font-weight: 400; border-radius: 8px;
     background: none; color: var(--primary-text-color, #212121);
   }
-  .rail button:hover { background: var(--card-background-color, #fff); }
+  .rail button:hover { background: var(--nl-surface-2); }
   /* Selected, not shouting: a filled accent here would carry the same
      weight as the Opslaan button and flatten the hierarchy. A bar and a
      heavier label are enough, and the bar is not colour alone. */
   .rail button.on {
-    background: var(--card-background-color, #fff); font-weight: 600;
-    box-shadow: inset 3px 0 0 var(--nl-accent);
+    font-weight: 600;
+    background: var(--nl-glass);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    border: 1px solid var(--nl-glass-border);
+    box-shadow: var(--nl-sheen), inset 3px 0 0 #f9e11e;
+    padding-left: 12px;
   }
   .rail button:focus-visible { outline: 2px solid var(--nl-accent); outline-offset: -2px; }
   .rail-label { flex: 1; }
@@ -2496,25 +2589,48 @@ class NlAlertPanel extends HTMLElement {
         fields: ["latitude", "longitude", "scan_interval_minutes"],
         rows: (o) => {
     const useHome = o.use_home_location !== false;
+    const mode = useHome ? "home" : o.location_input === "address" ? "address" : "coords";
           return `
         <div class="row">
-          <label class="title" for="use_home">Thuislocatie van Home Assistant gebruiken</label>
-          <div class="control"><input type="checkbox" id="use_home" ${
-            useHome ? "checked" : ""
-          }></div>
+          <label class="title" for="location_mode">Locatie opgeven via</label>
+          <div class="control">
+            <select id="location_mode">
+              <option value="home" ${mode === "home" ? "selected" : ""}>Thuislocatie van Home Assistant</option>
+              <option value="coords" ${mode === "coords" ? "selected" : ""}>Coördinaten</option>
+              <option value="address" ${mode === "address" ? "selected" : ""}>Adres</option>
+            </select>
+          </div>
         </div>
-        <div class="row">
+        ${
+          mode === "coords"
+            ? `<div class="row">
           <label class="title" for="latitude">Breedtegraad</label>
           <div class="control"><input type="text" id="latitude" value="${escapeHtml(
             o.latitude ?? ""
-          )}" ${useHome ? "disabled" : ""}></div>
+          )}"></div>
         </div>
         <div class="row">
           <label class="title" for="longitude">Lengtegraad</label>
           <div class="control"><input type="text" id="longitude" value="${escapeHtml(
             o.longitude ?? ""
-          )}" ${useHome ? "disabled" : ""}></div>
+          )}"></div>
         </div>
+        <div class="row">
+          <label class="title">Adres</label>
+          <div class="control muted" id="location-address">…</div>
+        </div>`
+            : mode === "address"
+            ? `<div class="row">
+          <label class="title" for="address_query">Adres</label>
+          <div class="control">
+            <input type="text" id="address_query" placeholder="Straat 1, Plaats"
+              value="${escapeHtml(o.location_address ?? "")}">
+            <button type="button" class="ghost" id="address_search">Zoeken</button>
+          </div>
+          <div id="address-results" style="flex-basis:100%"></div>
+        </div>`
+            : ""
+        }
         <div class="row">
           <label class="title" for="scan_interval">Ophaalinterval</label>
           <div class="control">
@@ -2578,17 +2694,18 @@ class NlAlertPanel extends HTMLElement {
             "Eigen bestanden" staat alles uit <code>/config/www</code>.
             ▶ speelt het geluid af in deze browser, niet op de speakers.</div>
         </div>
-        <div class="row">
+        <div class="row" id="siren-settings-row">
           <label class="title">Sirene<button type="button" class="help-btn"
             id="siren-help" aria-label="Uitleg over sirenes">?</button></label>
-          <div class="control">
-            <nl-multiselect id="sirens" data-label="Sirenes en schakelaars"
-              data-placeholder="— geen sirene —"></nl-multiselect>
+          <div class="control" id="siren-settings" style="flex-direction:column;align-items:stretch">
+            <span class="muted">Apparaten met een sirene zoeken…</span>
           </div>
-          <div class="hint muted">Gaat tegelijk met het alarmgeluid af, en
-            ook als je helemaal geen speakers hebt ingesteld. Nachtmodus
-            verzacht het volume van de speakers, maar niet de sirene — die
-            heeft geen volume om te verzachten.</div>
+          <div class="hint muted">Apparaten met een sirene, gevonden in Home
+            Assistant. Vink aan om te gebruiken; klap open voor de
+            instellingen van dat apparaat. Alleen wat je daar wijzigt wordt
+            vlak voor het alarm naar de sirene gestuurd. De sirene gaat
+            tegelijk met het alarmgeluid af, ook zonder speakers, en
+            nachtmodus geldt er niet voor.</div>
         </div>
         <div class="row">
           <label class="title" for="siren_follow">Sirene even lang als het alarmgeluid</label>
@@ -2943,6 +3060,22 @@ class NlAlertPanel extends HTMLElement {
           </div>
           <div class="hint muted">Notificatie zoveel seconden vóór het geluid.
             0 = geen waarschuwing.</div>
+        </div>
+        <div class="row">
+          <label class="title" for="siren_test_text_nl">Gesproken tekst (Nederlands)</label>
+          <div class="control">
+            <input type="text" id="siren_test_text_nl"
+              value="${escapeHtml(o.siren_test_text_nl ?? "Dit is een test voor NL-Alert")}">
+          </div>
+          <div class="hint muted">Wordt na het alarm uitgesproken. Leeg = niets zeggen.</div>
+        </div>
+        <div class="row">
+          <label class="title" for="siren_test_text_en">Gesproken tekst (Engels)</label>
+          <div class="control">
+            <input type="text" id="siren_test_text_en"
+              value="${escapeHtml(o.siren_test_text_en ?? "This is a test for NL-Alert")}">
+          </div>
+          <div class="hint muted">Volgt op de Nederlandse tekst. Leeg = geen Engels.</div>
         </div>
         <div class="row">
           <label class="title">Feestdagen</label>
@@ -3457,7 +3590,193 @@ class NlAlertPanel extends HTMLElement {
         .map((v) => ({ value: v, label: v, sub: "bestaat niet meer" }));
       node.options = [...stale, ...picker.options];
       node.value = picker.value;
-      node.addEventListener("change", (ev) => picker.apply(ev.detail.value));
+      node.addEventListener("change", (ev) => {
+        picker.apply(ev.detail.value);
+        if (picker.id === "sirens") this._loadSirenSettings();
+      });
+    }
+    this._loadSirenSettings();
+  }
+
+  /**
+   * One card per device that contains a siren: a checkbox to use it and, in
+   * a <details>, one control per setting the device offers. Untouched
+   * settings stay out of `siren_settings`, so the siren keeps whatever it
+   * has until the user picks something here.
+   */
+  async _loadSirenSettings() {
+    const root = this.shadowRoot;
+    const row = root.getElementById("siren-settings-row");
+    const box = root.getElementById("siren-settings");
+    if (!row || !box) return;
+    let devices = [];
+    let failed = false;
+    try {
+      devices = await this._hass.callWS({ type: "nl_alert/siren_devices" });
+    } catch (err) {
+      failed = true;
+      console.warn("nl-alert: siren_devices failed", err); // eslint-disable-line no-console
+    }
+    devices = Array.isArray(devices) ? devices : [];
+    box.textContent = "";
+    if (!devices.length) {
+      const note = document.createElement("span");
+      note.className = "muted";
+      note.textContent = failed
+        ? "De apparaten konden niet worden opgehaald. Dit onderdeel is nieuwer " +
+          "dan de draaiende integratie — herstart Home Assistant."
+        : "Geen apparaat met een sirene gevonden.";
+      box.append(note);
+      return;
+    }
+    const saved = () => this._options.siren_settings || {};
+    const set = (entity, value) => {
+      const all = { ...saved() };
+      if (value === undefined) delete all[entity];
+      else all[entity] = value;
+      this._options.siren_settings = all;
+    };
+    const linked = () => new Set(this._options.siren_entities || []);
+    for (const dev of devices) {
+      const card = document.createElement("details");
+      card.style.cssText = "margin:6px 0;padding:6px 8px;border:1px solid var(--divider-color,#8884);border-radius:8px";
+      const sum = document.createElement("summary");
+      sum.style.cssText = "display:flex;gap:8px;align-items:center;cursor:pointer";
+      const use = document.createElement("input");
+      use.type = "checkbox";
+      use.checked = linked().has(dev.trigger);
+      // A click on the checkbox must not fold the card open or shut.
+      use.addEventListener("click", (ev) => ev.stopPropagation());
+      use.addEventListener("change", () => {
+        const set_ = linked();
+        if (use.checked) set_.add(dev.trigger);
+        else set_.delete(dev.trigger);
+        this._options.siren_entities = [...set_];
+        const picker = root.getElementById("sirens");
+        if (picker) picker.value = this._options.siren_entities;
+      });
+      const label = document.createElement("span");
+      label.textContent = `${dev.name} (${dev.settings.length} instellingen)`;
+      sum.append(use, label);
+      card.append(sum);
+      for (const item of dev.settings) {
+        const wrap = document.createElement("label");
+        wrap.style.cssText = "display:flex;gap:8px;align-items:center;margin:6px 0";
+        const name = document.createElement("span");
+        name.style.flex = "1";
+        name.textContent = item.name;
+        let input;
+        const current = saved()[item.entity_id];
+        if (item.domain === "select") {
+          input = document.createElement("select");
+          for (const opt of item.options || []) {
+            const o = document.createElement("option");
+            o.value = o.textContent = opt;
+            input.append(o);
+          }
+          input.value = current ?? item.state;
+          input.addEventListener("change", () => set(item.entity_id, input.value));
+        } else if (item.domain === "number") {
+          input = document.createElement("input");
+          input.type = "number";
+          if (item.min != null) input.min = item.min;
+          if (item.max != null) input.max = item.max;
+          if (item.step != null) input.step = item.step;
+          input.value = current ?? item.state;
+          input.addEventListener("change", () => {
+            const n = parseFloat(input.value);
+            set(item.entity_id, Number.isNaN(n) ? undefined : n);
+          });
+        } else {
+          input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = current ?? item.state === "on";
+          input.addEventListener("change", () => set(item.entity_id, input.checked));
+        }
+        wrap.append(name, input);
+        if (item.unit) {
+          const unit = document.createElement("span");
+          unit.textContent = item.unit;
+          wrap.append(unit);
+        }
+        card.append(wrap);
+      }
+      box.append(card);
+    }
+  }
+
+  /** Show the address behind the coordinates, so a typo in them is visible. */
+  async _loadAddress() {
+    const node = this.shadowRoot.getElementById("location-address");
+    if (!node) return;
+    const o = this._options;
+    const home = o.use_home_location !== false;
+    const lat = parseFloat(home ? this._hass.config?.latitude ?? o.latitude : o.latitude);
+    const lon = parseFloat(home ? this._hass.config?.longitude ?? o.longitude : o.longitude);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) {
+      node.textContent = "—";
+      return;
+    }
+    node.textContent = "…";
+    let address = null;
+    try {
+      ({ address } = await this._hass.callWS({
+        type: "nl_alert/reverse_geocode",
+        latitude: lat,
+        longitude: lon,
+      }));
+    } catch (err) {
+      console.warn("nl-alert: reverse_geocode failed", err); // eslint-disable-line no-console
+    }
+    // The settings may have been re-rendered while waiting.
+    const now = this.shadowRoot.getElementById("location-address");
+    if (now) now.textContent = address || "Geen adres gevonden voor deze locatie.";
+  }
+
+  /** Look an address up and let the user pick one; its coordinates are stored. */
+  async _searchAddress() {
+    const root = this.shadowRoot;
+    const query = (root.getElementById("address_query")?.value || "").trim();
+    const box = root.getElementById("address-results");
+    if (!box) return;
+    box.textContent = "";
+    const note = (text) => {
+      const el = document.createElement("div");
+      el.className = "muted";
+      el.textContent = text;
+      box.append(el);
+    };
+    if (query.length < 3) return note("Typ minstens 3 tekens.");
+    note("Zoeken…");
+    let found;
+    try {
+      found = await this._hass.callWS({ type: "nl_alert/search_address", query });
+    } catch (err) {
+      box.textContent = "";
+      return note("Zoeken lukt nu niet. Probeer het later opnieuw.");
+    }
+    box.textContent = "";
+    if (!Array.isArray(found) || !found.length) return note("Geen adres gevonden.");
+    for (const item of found) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ghost";
+      btn.style.cssText = "display:block;width:100%;text-align:left;margin:4px 0";
+      btn.textContent = item.name;
+      btn.addEventListener("click", () => {
+        this._options.latitude = item.latitude;
+        this._options.longitude = item.longitude;
+        this._options.location_address = item.name;
+        const input = root.getElementById("address_query");
+        if (input) input.value = item.name;
+        const lat = root.getElementById("latitude");
+        const lon = root.getElementById("longitude");
+        if (lat) lat.value = item.latitude;
+        if (lon) lon.value = item.longitude;
+        box.textContent = "";
+        note(`✔ Gekozen: ${item.name}`);
+      });
+      box.append(btn);
     }
   }
 
@@ -3468,16 +3787,28 @@ class NlAlertPanel extends HTMLElement {
       if (node) node.addEventListener(event, handler);
     };
 
-    on("use_home", "change", (ev) => {
-      this._options.use_home_location = ev.target.checked;
+    on("location_mode", "change", (ev) => {
+      const mode = ev.target.value;
+      this._options.use_home_location = mode === "home";
+      if (mode !== "home") this._options.location_input = mode;
+      // _renderSettings only builds the markup; the handlers go on afterwards.
       this._renderSettings();
+      this._wireSettings();
+      this._wirePickers();
     });
     on("latitude", "change", (ev) => {
       this._options.latitude = parseFloat(ev.target.value);
+      this._loadAddress();
     });
     on("longitude", "change", (ev) => {
       this._options.longitude = parseFloat(ev.target.value);
+      this._loadAddress();
     });
+    on("address_search", "click", () => this._searchAddress());
+    on("address_query", "keydown", (ev) => {
+      if (ev.key === "Enter") this._searchAddress();
+    });
+    this._loadAddress();
     on("alert_radius", "change", (ev) => {
       this._options.alert_radius_km = parseInt(ev.target.value, 10) || 0;
     });
@@ -3545,6 +3876,12 @@ class NlAlertPanel extends HTMLElement {
     on("siren_test_lead", "change", (ev) => {
       this._options.siren_test_lead = parseInt(ev.target.value, 10) || 0;
     });
+    on("siren_test_text_nl", "change", (ev) => {
+      this._options.siren_test_text_nl = ev.target.value;
+    });
+    on("siren_test_text_en", "change", (ev) => {
+      this._options.siren_test_text_en = ev.target.value;
+    });
     on("notify_critical", "change", (ev) => {
       this._options.notify_critical = ev.target.checked;
     });
@@ -3601,6 +3938,9 @@ class NlAlertPanel extends HTMLElement {
         0,
         parseInt(ev.target.value, 10) || 0
       );
+    });
+    on("z2m_base_topic", "change", (ev) => {
+      this._options.z2m_base_topic = ev.target.value.trim();
     });
     on("siren-help", "click", () => this._openHelp("siren"));
     on("beta_tv", "change", (ev) => {
@@ -3770,6 +4110,18 @@ class NlAlertPanel extends HTMLElement {
   }
 
   async _runTest(kind) {
+    // These three set the siren off as well, and a siren has no night mode
+    // and no volume to lower: it sounds as loud as the device allows. Ask
+    // first, so nobody holds the phone next to their ear when it goes off.
+    const sirenKinds = ["full", "alarm", "announcement"];
+    if (sirenKinds.includes(kind) && (this._options.siren_entities || []).length) {
+      const ok = window.confirm(
+        "⚠️ Let op: de sirene gaat echt af, op vol volume.\n\n" +
+          "Nachtmodus geldt niet voor de sirene. Houd afstand tot het " +
+          "apparaat en waarschuw huisgenoten.\n\nTest starten?"
+      );
+      if (!ok) return;
+    }
     this._testRunning[kind] = true;
     this._renderTests();
     try {
@@ -3810,6 +4162,10 @@ class NlAlertPanel extends HTMLElement {
       siren_entities: o.siren_entities || [],
       siren_duration: o.siren_duration ?? 15,
       siren_follow_sound: o.siren_follow_sound !== false,
+      siren_settings: o.siren_settings || {},
+      z2m_base_topic: o.z2m_base_topic || "",
+      location_input: o.location_input || "coords",
+      location_address: o.location_address || "",
       night_enabled: o.night_enabled !== false,
       night_start: o.night_start || "22:30",
       night_end: o.night_end || "07:00",
@@ -3826,6 +4182,8 @@ class NlAlertPanel extends HTMLElement {
       notify_services: o.notify_services || [],
       siren_test_enabled: o.siren_test_enabled === true,
       siren_test_lead: o.siren_test_lead ?? 30,
+      siren_test_text_nl: o.siren_test_text_nl ?? "Dit is een test voor NL-Alert",
+      siren_test_text_en: o.siren_test_text_en ?? "This is a test for NL-Alert",
       notify_critical: o.notify_critical !== false,
       notify_tts_targets: o.notify_tts_targets || [],
       cast_enabled: o.cast_enabled === true,

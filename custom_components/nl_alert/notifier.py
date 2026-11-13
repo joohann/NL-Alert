@@ -45,6 +45,7 @@ from __future__ import annotations
 import asyncio
 from datetime import time as dt_time
 import io
+import json
 import logging
 import os
 import time
@@ -57,6 +58,7 @@ from homeassistant.components.tts import async_get_media_source_audio
 from homeassistant.components.tts.media_source import generate_media_source_id
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.network import NoURLAvailableError, get_url
@@ -91,6 +93,9 @@ from .const import (
     CONF_SIREN_DURATION,
     CONF_SIREN_FOLLOW_SOUND,
     CONF_SIREN_ENTITIES,
+    CONF_SIREN_SETTINGS,
+    CONF_Z2M_BASE_TOPIC,
+    DEFAULT_Z2M_BASE_TOPIC,
     CONF_SPEAK_ENGLISH,
     CONF_TRANSLATE_AGENT,
     CONF_TRANSLATE_MISSING,
@@ -646,6 +651,131 @@ async def _async_stop_sirens(hass: HomeAssistant, targets: list[str]) -> None:
             _LOGGER.warning("NL-Alert: sirene %s uitzetten mislukt: %s", entity, err)
 
 
+def _z2m_info(
+    hass: HomeAssistant, options: dict[str, Any], entity_id: str
+) -> tuple[str, str, str] | None:
+    """(set-topic, ieee, device_id) when ``entity_id`` is a Zigbee2MQTT device.
+
+    Recognised by the MQTT platform and the ``zigbee2mqtt_<ieee>`` device
+    identifier Zigbee2MQTT registers. The friendly name is the HA device name.
+    """
+    if not hass.services.has_service("mqtt", "publish"):
+        return None
+    reg = er.async_get(hass).async_get(entity_id)
+    if not reg or reg.platform != "mqtt" or not reg.device_id:
+        return None
+    device = dr.async_get(hass).async_get(reg.device_id)
+    if not device or not device.name:
+        return None
+    for domain, ident in device.identifiers:
+        if domain == "mqtt" and ident.startswith("zigbee2mqtt_"):
+            base = (options.get(CONF_Z2M_BASE_TOPIC) or DEFAULT_Z2M_BASE_TOPIC).strip("/")
+            return f"{base}/{device.name}/set", ident.split("_", 1)[1], reg.device_id
+    return None
+
+
+def _z2m_property(reg: er.RegistryEntry, ieee: str) -> str:
+    """Zigbee2MQTT property name behind an entity, from its unique_id.
+
+    "<ieee>_switch_siren_on_zigbee2mqtt" -> "siren_on".
+    """
+    prop = reg.unique_id or ""
+    if prop.startswith(f"{ieee}_"):
+        prop = prop[len(ieee) + 1 :]
+    if prop.endswith("_zigbee2mqtt"):
+        prop = prop[: -len("_zigbee2mqtt")]
+    domain = reg.entity_id.split(".")[0]
+    if prop.startswith(f"{domain}_"):
+        prop = prop[len(domain) + 1 :]
+    return prop
+
+
+def _z2m_payload(
+    hass: HomeAssistant, options: dict[str, Any], entity_id: str, ieee: str, device_id: str
+) -> dict[str, Any]:
+    """siren_on plus every saved setting of this device, as one payload."""
+    registry = er.async_get(hass)
+    trigger = registry.async_get(entity_id)
+    payload: dict[str, Any] = {}
+    wanted = options.get(CONF_SIREN_SETTINGS)
+    if isinstance(wanted, dict):
+        for sib, value in wanted.items():
+            reg = registry.async_get(sib)
+            if not reg or reg.device_id != device_id:
+                continue
+            prop = _z2m_property(reg, ieee)
+            if not prop:
+                continue
+            if isinstance(value, bool):
+                value = "ON" if value else "OFF"
+            elif isinstance(value, float) and value.is_integer():
+                value = int(value)
+            payload[prop] = value
+    payload[_z2m_property(trigger, ieee) if trigger and entity_id.startswith("switch.") else "state"] = "ON"
+    return payload
+
+
+async def _async_apply_siren_settings(
+    hass: HomeAssistant, options: dict[str, Any], live: list[str]
+) -> list[dict[str, str]]:
+    """Push the saved device settings (volume, tone, ...) to the siren.
+
+    Only entities the user explicitly set are touched, and only when the
+    value differs from what the device reports, so a Zigbee siren isn't
+    rewritten on every alert. A failure is reported but never blocks the
+    siren itself: a siren on its old settings beats a silent one.
+    """
+    wanted = options.get(CONF_SIREN_SETTINGS)
+    if not isinstance(wanted, dict) or not wanted:
+        return []
+
+    registry = er.async_get(hass)
+    devices = set()
+    z2m_devices = set()
+    for entity in live:
+        reg = registry.async_get(entity)
+        if reg and reg.device_id:
+            devices.add(reg.device_id)
+            if _z2m_info(hass, options, entity):
+                z2m_devices.add(reg.device_id)
+
+    errors: list[str] = []
+    for entity, value in wanted.items():
+        reg = registry.async_get(entity)
+        # Settings of a siren that is no longer linked are left alone, and a
+        # Zigbee2MQTT siren gets them in the one message that sets it off.
+        if not reg or reg.device_id not in devices or reg.device_id in z2m_devices:
+            continue
+        state = hass.states.get(entity)
+        if state is None or state.state in ("unavailable", "unknown"):
+            continue
+        domain = entity.split(".")[0]
+        try:
+            if domain == "select":
+                if state.state == str(value):
+                    continue
+                service, data = "select_option", {"option": str(value)}
+            elif domain == "number":
+                if float(state.state) == float(value):
+                    continue
+                service, data = "set_value", {"value": float(value)}
+            elif domain == "switch":
+                if (state.state == "on") == bool(value):
+                    continue
+                service, data = ("turn_on" if value else "turn_off"), {}
+            else:
+                continue
+            await hass.services.async_call(
+                domain, service, {"entity_id": entity, **data}, blocking=True
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("NL-Alert: sireneinstelling %s mislukt: %s", entity, err)
+            errors.append(entity)
+    if errors:
+        return [_step("siren", "error", "Instelling niet gelukt: " + ", ".join(errors) + ".")]
+    return []
+
+
 async def _async_trigger_sirens(
     hass: HomeAssistant, options: dict[str, Any]
 ) -> list[dict[str, str]]:
@@ -686,8 +816,10 @@ async def _async_trigger_sirens(
     if not live:
         return results
 
+    results.extend(await _async_apply_siren_settings(hass, options, live))
     seconds, from_sound = await async_effective_siren_seconds(hass, options)
     self_timed: list[str] = []
+    device_seconds: dict[str, int] = {}
     started: list[str] = []
     for entity in live:
         domain = entity.split(".")[0]
@@ -697,8 +829,29 @@ async def _async_trigger_sirens(
             # when HA restarts halfway through.
             data["duration"] = seconds
             self_timed.append(entity)
+        z2m = _z2m_info(hass, options, entity) if domain == "switch" else None
         try:
-            await hass.services.async_call(domain, "turn_on", data, blocking=True)
+            if z2m:
+                topic, ieee, device_id = z2m
+                payload = _z2m_payload(hass, options, entity, ieee, device_id)
+                # The siren times itself, so it keeps its promise through an
+                # HA restart. A duration the user set on the device wins over
+                # the sound length: otherwise a 10 s setting is cut short by a
+                # 2 s alarm sound, which reads as the setting being ignored.
+                if "alarm_duration" in payload:
+                    device_seconds[entity] = int(payload["alarm_duration"])
+                    self_timed.append(entity)
+                elif seconds > 0:
+                    payload["alarm_duration"] = seconds
+                    self_timed.append(entity)
+                await hass.services.async_call(
+                    "mqtt",
+                    "publish",
+                    {"topic": topic, "payload": json.dumps(payload)},
+                    blocking=True,
+                )
+            else:
+                await hass.services.async_call(domain, "turn_on", data, blocking=True)
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception("NL-Alert: sirene %s aanzetten mislukt", entity)
             results.append(_step("siren", "error", f"{entity} aanzetten mislukt: {err}"))
@@ -718,7 +871,13 @@ async def _async_trigger_sirens(
         async_call_later(hass, seconds, _stop)
 
     joined = ", ".join(started)
-    if seconds <= 0:
+    if device_seconds:
+        detail = (
+            "Sirene aan, duur van het apparaat zelf ("
+            + ", ".join(f"{e}: {n} sec" for e, n in device_seconds.items())
+            + ")."
+        )
+    elif seconds <= 0:
         detail = f"Sirene aan, blijft aan tot je hem zelf uitzet: {joined}."
     elif from_sound:
         detail = f"Sirene aan voor {seconds} sec (lengte alarmgeluid): {joined}."

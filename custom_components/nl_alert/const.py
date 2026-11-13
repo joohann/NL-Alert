@@ -95,6 +95,18 @@ CONF_SIREN_ENTITIES = "siren_entities"    # list[str], siren.* or switch.*
 CONF_SIREN_DURATION = "siren_duration"    # seconds; 0 = leave it running
 DEFAULT_SIREN_DURATION = 15
 
+# Device settings of the linked siren (volume, tone, light, ...), picked up
+# from the other entities on the same device and applied right before the
+# siren goes off. {entity_id: value}; only what the user set is touched.
+CONF_SIREN_SETTINGS = "siren_settings"
+
+# A Zigbee2MQTT siren takes everything as ONE message on <base>/<name>/set
+# ({"siren_on": "ON", "alarm_volume_level": "low", ...}); separate service
+# calls per setting would arrive as separate messages. The base topic is the
+# one from the Zigbee2MQTT configuration, "zigbee2mqtt" unless changed.
+CONF_Z2M_BASE_TOPIC = "z2m_base_topic"
+DEFAULT_Z2M_BASE_TOPIC = "zigbee2mqtt"
+
 # Let the siren run exactly as long as the alarm sound, so the two stop
 # together instead of one trailing the other. Read from the file itself:
 # exact for WAV (which is what ships here, 0.7 to 7.0 seconds), estimated
@@ -193,6 +205,11 @@ SIREN_TEST_NOTIFY_TITLE = "NL-Alert — maandelijkse test"
 SIREN_TEST_WARNING = (
     "Over 30 seconden klinkt het maandelijkse testalarm. Er is niets aan de hand."
 )
+# Spoken after the alarm sound. Editable; an empty text silences that language.
+CONF_SIREN_TEST_TEXT_NL = "siren_test_text_nl"
+CONF_SIREN_TEST_TEXT_EN = "siren_test_text_en"
+DEFAULT_SIREN_TEST_TEXT_NL = "Dit is een test voor NL-Alert"
+DEFAULT_SIREN_TEST_TEXT_EN = "This is a test for NL-Alert"
 SIREN_TEST_MESSAGE = "Maandelijkse test van het luchtalarm (eerste maandag, 12:00)."
 
 # Repair issue raised when the siren test is on but HA has no holiday source.

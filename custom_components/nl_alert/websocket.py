@@ -11,6 +11,9 @@ Commands:
   nl_alert/save_config        → write options (admin only), reloads the entry
   nl_alert/list_media_players → media_player entities
   nl_alert/list_sirens        → siren.* and switch.* entities
+  nl_alert/search_address     → addresses matching a text (PDOK Locatieserver)
+  nl_alert/reverse_geocode    → address for a coordinate (PDOK Locatieserver)
+  nl_alert/siren_devices      → devices with a siren + their settings
   nl_alert/list_notify_services → notify.* services
   nl_alert/list_tts_services  → tts.* entities + whether chime_tts is present
   nl_alert/list_audio_files   → /local/**.mp3 etc.
@@ -22,6 +25,7 @@ New in 0.3.0 (2026-08-09).
 """
 from __future__ import annotations
 
+import aiohttp
 import logging
 from typing import Any
 
@@ -31,6 +35,8 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
@@ -75,6 +81,10 @@ _WRITABLE_KEYS = {
     "siren_entities",
     "siren_duration",
     "siren_follow_sound",
+    "siren_settings",
+    "z2m_base_topic",
+    "location_input",
+    "location_address",
     "beta_enabled",
     "night_enabled",
     "night_start",
@@ -103,6 +113,8 @@ _WRITABLE_KEYS = {
     "cast_power_entities",
     "siren_test_enabled",
     "siren_test_lead",
+    "siren_test_text_nl",
+    "siren_test_text_en",
     "holiday_entity",
     "show_in_sidebar",
     "map_show_national",
@@ -297,8 +309,167 @@ def ws_list_sirens(hass: HomeAssistant, connection, msg) -> None:
     connection.send_result(msg["id"], items)
 
 
+PDOK_REVERSE_URL = "https://api.pdok.nl/bzk/locatieserver/search/v3_1/reverse"
+
+
+PDOK_SEARCH_URL = "https://api.pdok.nl/bzk/locatieserver/search/v3_1/free"
+
+
 @websocket_api.websocket_command(
-    {vol.Required("type"): "nl_alert/list_power_entities"}
+    {
+        vol.Required("type"): "nl_alert/search_address",
+        vol.Required("query"): vol.All(str, vol.Length(min=3, max=200)),
+    }
+)
+@websocket_api.async_response
+async def ws_search_address(hass: HomeAssistant, connection, msg) -> None:
+    """Dutch addresses matching a typed text, each with its coordinates."""
+    found: list[dict[str, Any]] = []
+    try:
+        async with async_get_clientsession(hass).get(
+            PDOK_SEARCH_URL,
+            params={
+                "q": msg["query"],
+                "fq": "type:adres",
+                "rows": 6,
+                "fl": "weergavenaam,centroide_ll",
+            },
+            timeout=aiohttp.ClientTimeout(total=8),
+        ) as resp:
+            resp.raise_for_status()
+            docs = (await resp.json()).get("response", {}).get("docs", [])
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        _LOGGER.debug("NL-Alert: adres zoeken mislukt: %s", err)
+        connection.send_error(msg["id"], "unavailable", "Adres zoeken is mislukt")
+        return
+    for doc in docs:
+        try:
+            # "POINT(lon lat)"
+            lon, lat = doc["centroide_ll"].removeprefix("POINT(").removesuffix(")").split()
+            found.append(
+                {
+                    "name": doc["weergavenaam"],
+                    "latitude": round(float(lat), 7),
+                    "longitude": round(float(lon), 7),
+                }
+            )
+        except (KeyError, ValueError, AttributeError):
+            continue
+    connection.send_result(msg["id"], found)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "nl_alert/reverse_geocode",
+        vol.Required("latitude"): vol.Coerce(float),
+        vol.Required("longitude"): vol.Coerce(float),
+    }
+)
+@websocket_api.async_response
+async def ws_reverse_geocode(hass: HomeAssistant, connection, msg) -> None:
+    """Nearest Dutch address for a coordinate, from PDOK's Locatieserver.
+
+    PDOK is the Dutch government's address service: free, no key, and the
+    same data as the BAG. Only the coordinate is sent. A failure is not an
+    error for the panel — the address is a convenience next to the numbers.
+    """
+    address = None
+    try:
+        async with async_get_clientsession(hass).get(
+            PDOK_REVERSE_URL,
+            params={
+                "lat": msg["latitude"],
+                "lon": msg["longitude"],
+                "type": "adres",
+                "rows": 1,
+                "fl": "weergavenaam",
+            },
+            timeout=aiohttp.ClientTimeout(total=8),
+        ) as resp:
+            resp.raise_for_status()
+            docs = (await resp.json()).get("response", {}).get("docs", [])
+            if docs:
+                address = docs[0].get("weergavenaam")
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        _LOGGER.debug("NL-Alert: adres opzoeken mislukt: %s", err)
+    connection.send_result(msg["id"], {"address": address})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "nl_alert/siren_devices"})
+@callback
+def ws_siren_devices(hass: HomeAssistant, connection, msg) -> None:
+    """Devices that contain a siren, each with the settings it offers.
+
+    A device counts as a siren when it has a siren.* entity, or a switch
+    that calls itself a siren (a Zigbee2MQTT siren shows up as a switch).
+    ``trigger`` is the entity NL-Alert switches on; the select/number/switch
+    entities next to it on the same device are the settings (volume, tone,
+    duration, light). Nothing is hard-coded per brand.
+    """
+    registry = er.async_get(hass)
+    devices = dr.async_get(hass)
+    by_device: dict[str, list] = {}
+    for reg in registry.entities.values():
+        if reg.device_id and not reg.disabled_by:
+            by_device.setdefault(reg.device_id, []).append(reg)
+
+    def _is_siren_switch(reg) -> bool:
+        text = f"{reg.entity_id} {reg.original_name or ''} {reg.name or ''}".lower()
+        return "siren" in text or "sirene" in text
+
+    result = []
+    for device_id, entities in by_device.items():
+        triggers = [r for r in entities if r.domain == "siren"] or [
+            r for r in entities if r.domain == "switch" and _is_siren_switch(r)
+        ]
+        if not triggers:
+            continue
+        trigger = triggers[0]
+        settings = []
+        for sib in entities:
+            if sib.entity_id == trigger.entity_id or sib.domain not in (
+                "select",
+                "number",
+                "switch",
+            ):
+                continue
+            state = hass.states.get(sib.entity_id)
+            if state is None:
+                continue
+            attrs = state.attributes
+            item = {
+                "entity_id": sib.entity_id,
+                "name": sib.name or sib.original_name or attrs.get("friendly_name") or sib.entity_id,
+                "domain": sib.domain,
+                "state": state.state,
+            }
+            if sib.domain == "select":
+                item["options"] = list(attrs.get("options") or [])
+            elif sib.domain == "number":
+                item.update(
+                    min=attrs.get("min"),
+                    max=attrs.get("max"),
+                    step=attrs.get("step"),
+                    unit=attrs.get("unit_of_measurement"),
+                )
+            settings.append(item)
+        settings.sort(key=lambda x: x["name"].lower())
+        device = devices.async_get(device_id)
+        result.append(
+            {
+                "device_id": device_id,
+                "name": (device.name_by_user or device.name) if device else trigger.entity_id,
+                "trigger": trigger.entity_id,
+                "settings": settings,
+            }
+        )
+    result.sort(key=lambda x: x["name"].lower())
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "nl_alert/list_power_entities"}
 )
 @callback
 def ws_list_power_entities(hass: HomeAssistant, connection, msg) -> None:
@@ -564,6 +735,9 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_list_notify_services)
     websocket_api.async_register_command(hass, ws_list_power_entities)
     websocket_api.async_register_command(hass, ws_list_sirens)
+    websocket_api.async_register_command(hass, ws_siren_devices)
+    websocket_api.async_register_command(hass, ws_reverse_geocode)
+    websocket_api.async_register_command(hass, ws_search_address)
     websocket_api.async_register_command(hass, ws_list_tts_services)
     websocket_api.async_register_command(hass, ws_list_audio_files)
     websocket_api.async_register_command(hass, ws_test)

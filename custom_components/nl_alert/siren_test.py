@@ -19,6 +19,7 @@ New in 0.11.0 (2026-08-09).
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 import logging
 from typing import Any
@@ -31,9 +32,17 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_HOLIDAY_ENTITY,
+    CONF_ALARM_DURATION,
+    CONF_PREAMBLE,
     CONF_SIREN_TEST_ENABLED,
     CONF_SIREN_TEST_LEAD,
+    CONF_SIREN_TEST_TEXT_EN,
+    CONF_SIREN_TEST_TEXT_NL,
+    DEFAULT_ALARM_DURATION,
     DEFAULT_SIREN_TEST_LEAD,
+    DEFAULT_SIREN_TEST_TEXT_EN,
+    DEFAULT_SIREN_TEST_TEXT_NL,
+    SEPARATOR,
     DOMAIN,
     SIREN_TEST_HOUR,
     SIREN_TEST_MESSAGE,
@@ -44,6 +53,7 @@ from .const import (
 from .notifier import (
     _async_notify,
     _async_play_alarm_sound,
+    _async_speak,
     _async_trigger_sirens,
 )
 
@@ -194,6 +204,33 @@ class SirenTestScheduler:
             self._hass, self._options, SIREN_TEST_NOTIFY_TITLE, SIREN_TEST_WARNING
         )
 
+    async def _async_announce(
+        self, alarm: list[dict[str, str]]
+    ) -> list[dict[str, str]]:
+        """Speak the (editable) test text, Dutch then English, after the alarm."""
+        options = self._options
+        nl = options.get(CONF_SIREN_TEST_TEXT_NL, DEFAULT_SIREN_TEST_TEXT_NL)
+        en = options.get(CONF_SIREN_TEST_TEXT_EN, DEFAULT_SIREN_TEST_TEXT_EN)
+        nl, en = (nl or "").strip(), (en or "").strip()
+        if not nl and not en:
+            return []
+
+        if any(r["status"] == "ok" for r in alarm):
+            duration = int(
+                options.get(CONF_ALARM_DURATION) or DEFAULT_ALARM_DURATION
+            )
+            if duration > 0:
+                await asyncio.sleep(duration)
+
+        # "Attentie... Dit is een NL-Alert." in front of a test would
+        # contradict the text itself, so the preamble is off here.
+        message = f"{nl} {SEPARATOR} {en}" if en else nl
+        if not nl:
+            message = f"{SEPARATOR} {en}"
+        return await _async_speak(
+            self._hass, {**options, CONF_PREAMBLE: False}, message
+        )
+
     async def _async_sound(self, _now: datetime) -> None:
         """The alarm itself, then re-plant for next month."""
         reason = self._skip_reason()
@@ -213,7 +250,9 @@ class SirenTestScheduler:
             # option — there is no sensible reason to want it off here while
             # having it on for a real alert.
             results = await _async_trigger_sirens(self._hass, self._options)
-            results += await _async_play_alarm_sound(self._hass, self._options)
+            alarm = await _async_play_alarm_sound(self._hass, self._options)
+            results += alarm
+            results += await self._async_announce(alarm)
             if coordinator is not None:
                 await coordinator.history.async_load()
                 await coordinator.history.async_record_siren_test(
