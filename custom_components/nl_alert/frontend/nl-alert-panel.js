@@ -690,13 +690,15 @@ const STYLE = `
     position: relative;
     isolation: isolate;
     padding: 16px;
-    max-width: 1100px;
-    margin: 0 auto;
     box-sizing: border-box;
     background: var(--nl-ground);
     color: var(--primary-text-color, #212121);
     font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif);
   }
+  /* The ground has to reach HA's content edges, or a dark strip of HA's own
+     background shows beside the panel as a hard seam. So :host runs full
+     width and the 1100px reading cap lives on an inner wrapper instead. */
+  .page { max-width: 1100px; margin: 0 auto; }
   /* The ambient wash. Glass needs something coloured behind it to refract;
      without this the frosted surfaces read as plain grey panes with a rim.
      z-index:-1 keeps it behind every card and the header but above the solid
@@ -1626,6 +1628,7 @@ class NlAlertPanel extends HTMLElement {
   _renderShell() {
     this.shadowRoot.innerHTML = `
       <style>${STYLE}</style>
+      <div class="page">
       <header id="header"></header>
       <div id="problems"></div>
       <div class="card">
@@ -1648,6 +1651,7 @@ class NlAlertPanel extends HTMLElement {
         <div class="row"><div id="history" class="grow"></div></div>
       </details>
       <majikan-donate lang="nl" accent="--nl-accent" contact="https://majikan.nl/contact-me" version="${this._version}"></majikan-donate>
+      </div>
       <div id="dialog-root"></div>
       <div id="busy-root"></div>
       <div id="welcome-root"></div>
