@@ -691,6 +691,11 @@ const STYLE = `
     isolation: isolate;
     padding: 16px;
     box-sizing: border-box;
+    /* Fill the content area even when the content is short, or HA's own
+       background shows below the last card as a horizontal seam. The panel
+       sits under HA's app header, so subtract its height; it grows past this
+       when the content is taller. */
+    min-height: calc(100vh - var(--header-height, 56px));
     background: var(--nl-ground);
     color: var(--primary-text-color, #212121);
     font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif);
