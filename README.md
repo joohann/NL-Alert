@@ -9,14 +9,16 @@
 </p>
 
 <p align="center">
+  <a href="#english"><img src="https://img.shields.io/badge/English%20below-ffe500?style=for-the-badge&logo=googletranslate&logoColor=111111" alt="Read in English"></a>
+</p>
+
+<p align="center">
   <img src="docs/demo.gif" width="820" alt="Het NL-Alert paneel in Home Assistant: landelijk overzicht, instellingen en de speaker-keuzelijst">
 </p>
 
 <p align="right">
   <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=joohann&repository=NL-Alert&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open je Home Assistant en voeg deze repository toe aan de Marketplace."></a>
 </p>
-
-**Nederlands** · [English below](#english)
 
 ---
 
@@ -72,13 +74,15 @@ Elke instelling zit in één scherm, verdeeld over een rail: speakers, alarmgelu
 
 ## Installatie
 
-**HACS**
+**Marketplace** (Home Assistant 2026.11 en nieuwer, waar HACS onderdeel van de core werd)
 
-1. HACS, drie stipjes rechtsboven, **Custom repositories**.
-2. Voeg `https://github.com/joohann/NL-Alert` toe met categorie **Integration**.
+De **Add to Marketplace**-knop hierboven voegt de repository in één stap toe; installeer daarna **NL-Alert** en herstart Home Assistant. Of met de hand:
+
+1. Open de **Marketplace** en klik rechtsboven op **Add from link**.
+2. Plak `https://github.com/joohann/NL-Alert`, categorie **Integration**.
 3. Installeer **NL-Alert** en herstart Home Assistant.
 
-De **Add to Marketplace**-knop bovenaan doet stap 1 en 2 in één keer.
+Op oudere versies met HACS los geïnstalleerd lopen dezelfde stappen via HACS, drie stipjes, **Custom repositories**.
 
 **Handmatig**
 
@@ -129,7 +133,9 @@ MIT — zie [LICENSE](LICENSE).
 
 # English
 
-**English** · [Nederlands boven](#nl-alert-voor-home-assistant)
+<p align="center">
+  <a href="#nl-alert-voor-home-assistant"><img src="https://img.shields.io/badge/Nederlands%20boven-ffe500?style=for-the-badge&logo=googletranslate&logoColor=111111" alt="Lees in het Nederlands"></a>
+</p>
 
 A Home Assistant custom integration that fetches active NL-Alert warnings and passes them to your home: an alarm over the speakers, a spoken announcement, a critical notification on your phone, and the warned area on a map. NL-Alert is the Dutch national public warning system.
 
@@ -183,13 +189,15 @@ Every setting lives in one screen, split over a rail: speakers, alarm sound, voi
 
 ## Installation
 
-**HACS**
+**Marketplace** (Home Assistant 2026.11 and later, where HACS became part of core)
 
-1. HACS, three dots, **Custom repositories**.
-2. Add `https://github.com/joohann/NL-Alert` as an **Integration**.
-3. Install **NL-Alert** and restart Home Assistant.
+The **Add to Marketplace** button above adds the repository in one step; then install **NL-Alert** and restart Home Assistant. Or by hand:
 
-The **Add to Marketplace** button near the top does steps 1 and 2 in one go.
+1. Open the **Marketplace** and click **Add from link** in the top right.
+2. Paste `https://github.com/joohann/NL-Alert`, category **Integration**.
+3. Install **NL-Alert**, then restart Home Assistant.
+
+On older versions with HACS installed separately, the same steps live under HACS, three dots, **Custom repositories**.
 
 **Manual**
 
