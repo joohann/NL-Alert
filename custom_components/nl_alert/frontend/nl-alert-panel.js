@@ -111,6 +111,17 @@ const HELP = {
 /** Beta features the panel knows how to switch. Mirrors BETA_FEATURES in const.py. */
 const BETA_FEATURES = ["tv"];
 
+/**
+ * UI strings, keyed by a short id with an English and Dutch value. t() picks
+ * the language from hass.language, falling back to English for anything that
+ * is not Dutch, the way Home Assistant integrations do. The groundwork for a
+ * bilingual panel; only a couple of strings use it so far.
+ */
+const STRINGS = {
+  sending: { en: "Sending…", nl: "Versturen…" },
+  test_done: { en: "Done.", nl: "Klaar." },
+};
+
 const WELCOME = {
   title: "NL-Alert in Home Assistant",
   intro:
@@ -1029,7 +1040,7 @@ const STYLE = `
   .test .results .error { color: var(--nl-accent); }
   .test .results .warning { color: #fb8c00; }
   .test .results .skipped { color: var(--secondary-text-color, #727272); }
-  .results { font-size: 13px; }
+  .results { font-size: 13px; margin-top: 8px; }
   .results div { padding: 2px 0; display: flex; gap: 6px; }
   .results .ok { color: var(--success-color, #43a047); }
   .results .error { color: var(--nl-accent); }
@@ -2574,6 +2585,18 @@ class NlAlertPanel extends HTMLElement {
     return (this._hass && this._hass.language) || "nl";
   }
 
+  /** "nl" for a Dutch Home Assistant, "en" for everything else. */
+  _lang() {
+    return this._locale().toLowerCase().startsWith("nl") ? "nl" : "en";
+  }
+
+  /** One UI string in the active language, English as the fallback. */
+  t(key) {
+    const entry = STRINGS[key];
+    if (!entry) return key;
+    return entry[this._lang()] ?? entry.en ?? key;
+  }
+
   _fieldError(field) {
     return this._validation.some(
       (p) => p.field === field && p.status === "error"
@@ -3037,7 +3060,7 @@ class NlAlertPanel extends HTMLElement {
           <div class="control">
             <button id="cast-test">Nu naar de TV sturen</button>
           </div>
-          <div class="hint results" id="cast-result">${this._renderResults(
+          <div class="results" id="cast-result">${this._renderResults(
             "cast"
           )}</div>
         </div>`;
@@ -3340,7 +3363,7 @@ class NlAlertPanel extends HTMLElement {
     this._openTip = null;
     let n = 0;
     pane.querySelectorAll(".row").forEach((row) => {
-      const hint = row.querySelector(":scope > .hint");
+      const hint = row.querySelector(":scope > .hint:not(.results)");
       if (!hint) return;
       // A row with no control is prose, not an explanation of a field —
       // "Over NL-Alert" carries the two statements that this is unofficial
@@ -4131,6 +4154,21 @@ class NlAlertPanel extends HTMLElement {
       );
       if (!ok) return;
     }
+    // The cast test lives on a button inside the TV card too, and that one
+    // had no running state: a cast can spend up to 15s waking the TV, so the
+    // button sat there looking dead. Give it a clear "sending" state and an
+    // immediate line, so something always happens on press.
+    const inlineBtn = this.shadowRoot.getElementById(`${kind}-test`);
+    const inlineRes = this.shadowRoot.getElementById(`${kind}-result`);
+    const prevLabel = inlineBtn ? inlineBtn.textContent : null;
+    if (inlineBtn) {
+      inlineBtn.disabled = true;
+      inlineBtn.textContent = this.t("sending");
+    }
+    if (inlineRes) {
+      inlineRes.innerHTML =
+        `<div class="skipped"><span>…</span><span>${this.t("sending")}</span></div>`;
+    }
     this._testRunning[kind] = true;
     this._renderTests();
     try {
@@ -4147,10 +4185,20 @@ class NlAlertPanel extends HTMLElement {
     }
     this._testRunning[kind] = false;
     this._renderTests();
-    // The cast test has a second home: a button inside the TV card, so the
-    // result shows up where you pressed it rather than only further down.
-    const inline = this.shadowRoot.getElementById(`${kind}-result`);
-    if (inline) inline.innerHTML = this._renderResults(kind);
+    // Back to where you pressed it: restore the TV-card button and show the
+    // result there. A run that somehow returned no steps still says "Done",
+    // so the press never ends in silence.
+    if (inlineBtn) {
+      inlineBtn.disabled = false;
+      inlineBtn.textContent = prevLabel;
+    }
+    if (inlineRes) {
+      inlineRes.innerHTML =
+        this._renderResults(kind) ||
+        `<div class="ok"><span>${STATUS_ICON.ok}</span><span>${this.t(
+          "test_done"
+        )}</span></div>`;
+    }
   }
 
   /* ── Save ──────────────────────────────────────────────────────────────── */
