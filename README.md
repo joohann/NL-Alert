@@ -1,19 +1,15 @@
 # NL-Alert voor Home Assistant
 
-[![HACS Custom][hacs-badge]][hacs] [![Validate][validate-badge]][actions] [![Hassfest][hassfest-badge]][actions]
-
-[![Voeg toe aan HACS][my-badge]][my-hacs]
-
-Ontvang **NL-Alert** waarschuwingen in Home Assistant: alarm door het huis, een
-gesproken aankondiging, een kritieke notificatie op je telefoon en het
-gewaarschuwde gebied op de kaart.
+Custom integration die actieve NL-Alert waarschuwingen ophaalt en doorgeeft
+aan je huis: alarm door de speakers, een gesproken aankondiging, een kritieke
+notificatie op je telefoon en het gewaarschuwde gebied op een kaart.
 
 > Onofficieel. Dit project heeft geen band met de Rijksoverheid of het
 > ministerie van Justitie en Veiligheid. Gegevens komen van de publieke API van
 > [public-warning.app](https://api.public-warning.app). **Vertrouw hier nooit
 > alleen op** — NL-Alert op je telefoon en de sirene blijven leidend.
 
-## Wat het doet
+## Functionaliteit
 
 - **Alarmeert bij wat jou aangaat** — een alert waarvan het gebied jouw locatie
   bevat, een landelijke melding, of een test. Een incident twee provincies
@@ -40,30 +36,28 @@ gewaarschuwde gebied op de kaart.
 - **Maandelijkse test** — eerste maandag van de maand om 12:00:00, overgeslagen
   op feestdagen.
 - **Paneel met kaart** — landelijk overzicht, geschiedenis met locatie, slepen,
-  zoomen en dubbelklikken. De kaartlaag is instelbaar: OpenStreetMap,
-  Esri, of je eigen tegel-URL.
+  zoomen en dubbelklikken. De kaartlaag is instelbaar: OpenStreetMap, Esri, of
+  je eigen tegel-URL.
+- **Eigen brand-icoon** (via de lokale `brand/` map, geen PR naar de
+  home-assistant/brands-repo nodig).
 
 ## Installatie
 
-### HACS
+### Via HACS (custom repository)
 
-[![Voeg toe aan HACS][my-badge]][my-hacs]
-
-Die knop opent HACS op je eigen Home Assistant met deze repository al
-ingevuld. Werkt de knop niet, voeg hem dan met de hand toe:
-
-1. HACS → ⋮ → **Custom repositories**
-2. URL: `https://github.com/joohann/NL-Alert`, categorie **Integration**
-
-Daarna in beide gevallen:
-
-3. Installeer **NL-Alert** en **herstart Home Assistant**
-4. Instellingen → Apparaten & diensten → **Integratie toevoegen** → NL-Alert
+1. HACS > drie stipjes rechtsboven > **Custom repositories**.
+2. Voeg `https://github.com/joohann/NL-Alert` toe met categorie **Integration**.
+3. Zoek "NL-Alert" in HACS en installeer.
+4. Herstart Home Assistant.
 
 ### Handmatig
 
-Kopieer `custom_components/nl_alert` naar je `config/custom_components/` en
-herstart Home Assistant.
+1. Kopieer de map `custom_components/nl_alert` naar de `custom_components`-map
+   van je Home Assistant installatie.
+2. Herstart Home Assistant.
+
+Daarna in beide gevallen: ga naar **Instellingen > Apparaten & diensten >
+Integratie toevoegen** en zoek naar "NL-Alert".
 
 ## Instellen
 
@@ -95,7 +89,7 @@ gemiste test. Home Assistant meldt dit zelf via Reparaties.
 Er is ook een service `nl_alert.test_alert` en een Lovelace-kaart
 `custom:nl-alert-card`.
 
-## Bekende beperkingen
+## Beperkingen / aandachtspunten
 
 - **Het paneel is alleen Nederlands.** De config flow is NL en EN; de
   paneelteksten nog niet.
@@ -124,11 +118,3 @@ python3 custom_components/nl_alert/tests/offline_checks.py
 ## Licentie
 
 MIT — zie [LICENSE](LICENSE).
-
-[hacs]: https://github.com/hacs/integration
-[hacs-badge]: https://img.shields.io/badge/HACS-Custom-41BDF5.svg
-[my-badge]: https://my.home-assistant.io/badges/hacs_repository.svg
-[my-hacs]: https://my.home-assistant.io/redirect/hacs_repository/?owner=joohann&repository=NL-Alert&category=integration
-[actions]: https://github.com/joohann/NL-Alert/actions
-[validate-badge]: https://github.com/joohann/NL-Alert/actions/workflows/validate.yml/badge.svg
-[hassfest-badge]: https://github.com/joohann/NL-Alert/actions/workflows/hassfest.yml/badge.svg
